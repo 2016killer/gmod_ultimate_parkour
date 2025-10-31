@@ -1,5 +1,7 @@
 UltiPar = UltiPar or {}
 UltiPar.ActionSet = UltiPar.ActionSet or {}
+UltiPar.MoveControl = {} -- 移动控制, 此变量不可直接修改, 使用SetMoveControl修改
+
 local ActionSet = UltiPar.ActionSet
 
 local function GetAction(target)
@@ -97,6 +99,7 @@ UltiPar.Register = Register
 
 
 if SERVER then
+	util.AddNetworkString('UltiParMoveControl')
 	util.AddNetworkString('UltiParPlay')
 
 	net.Receive('UltiParPlay', function(len, ply)
@@ -109,9 +112,18 @@ if SERVER then
 		end
 	end)
 
+	local function SetMoveControl(ply, enable, ClearMovement, RemoveKeys, AddKeys)
+		net.Start('UltiParMoveControl')
+			net.WriteBool(enable)
+			net.WriteBool(ClearMovement)
+			net.WriteInt(RemoveKeys, 32)
+			net.WriteInt(AddKeys, 32)
+		net.Send(ply)
+	end
+
 	local function EasyMoveCall(ply, mv, cmd)
 		local dt = CurTime() - ply.ultipar_move.starttime
-		
+
 		mv:SetOrigin(
 			LerpVector(
 				dt / ply.ultipar_move.duration, 
@@ -121,15 +133,17 @@ if SERVER then
 		) 
 
 		if dt >= ply.ultipar_move.duration then 
-			ply:SetMoveType(MOVETYPE_WALK)
 			mv:SetOrigin(ply.ultipar_move.endpos)
+			ply:SetMoveType(MOVETYPE_WALK)
 			mv:SetVelocity(ply.ultipar_move.startvel)
-			
 			ply.ultipar_move = nil -- 移动结束, 清除移动数据
+			SetMoveControl(ply, false, false, 0, 0)
 		end
 	end
 
-	local function StartEasyMove(ply, endpos, duration)
+	local function StartEasyMove(ply, endpos, duration, removekeys, addkeys)
+		ply:SetMoveType(MOVETYPE_NOCLIP)
+
 		ply.ultipar_move = {
 			Call = EasyMoveCall,
 			startpos = ply:GetPos(),
@@ -138,7 +152,8 @@ if SERVER then
 			starttime = CurTime(),
 			startvel = ply:GetVelocity()
 		}
-		ply:SetMoveType(MOVETYPE_NONE)
+
+		SetMoveControl(ply, true, true, removekeys or IN_JUMP, addkeys or 0)
 	end
 
 	hook.Add('SetupMove', 'ultipar.move', function(ply, mv, cmd)
@@ -196,7 +211,49 @@ if SERVER then
 		ply.ultipar_effect = {}
 	end)
 
+	UltiPar.SetMoveControl = SetMoveControl
 	UltiPar.StartEasyMove = StartEasyMove
+elseif CLIENT then
+	local MoveControl = UltiPar.MoveControl
+	local function SetMoveControl(_, enable, ClearMovement, RemoveKeys, AddKeys)
+		MoveControl.enable = enable
+		MoveControl.ClearMovement = ClearMovement
+		MoveControl.RemoveKeys = RemoveKeys
+		MoveControl.AddKeys = AddKeys
+	end
+
+	net.Receive('UltiParMoveControl', function()
+		local enable = net.ReadBool()
+		local ClearMovement = net.ReadBool()
+		local RemoveKeys = net.ReadInt(32)
+		local AddKeys = net.ReadInt(32)
+
+		SetMoveControl(nil, 
+			enable, 
+			ClearMovement, 
+			RemoveKeys, 
+			AddKeys
+		)
+	end)
+
+	hook.Add('CreateMove', 'ultipar.move.control', function(cmd)
+		if not MoveControl.enable then return end
+		if MoveControl.ClearMovement then
+			cmd:ClearMovement()
+		end
+
+		local RemoveKeys = MoveControl.RemoveKeys
+		if isnumber(RemoveKeys) and RemoveKeys ~= 0 then
+			cmd:RemoveKey(RemoveKeys)
+		end
+
+		local AddKeys = MoveControl.AddKeys
+		if isnumber(AddKeys) and AddKeys ~= 0 then
+			cmd:AddKey(AddKeys)
+		end
+	end)
+
+	UltiPar.SetMoveControl = SetMoveControl
 end
 
 -- 加载动作文件
@@ -222,12 +279,12 @@ for _, filename in pairs(filelist) do
 	end
 end
 
-local filelist = file.Find('ultipar/*.json', 'LUA')
-for _, filename in pairs(filelist) do
-	print(filename)
-end
-
 if CLIENT then
+	local white = Color(255, 255, 255)
+	local function drawwhite(self, w, h)
+		draw.RoundedBox(0, 0, 0, w, h, white)
+	end
+
 	-- UI界面
 	UltiPar.CreateActionEditor = function(target)
 		local action, actionName = UltiPar.GetAction(target)
@@ -249,7 +306,7 @@ if CLIENT then
 		local effecttree = vgui.Create('DTree', UserPanel)
 		effecttree:Dock(FILL)
 
-		for k, v in pairs(action.Views) do
+		for k, v in pairs(action.Effects) do
 			local node = effecttree:AddNode(
 				isstring(v.label) and v.label or k, 
 				isstring(v.icon) and v.icon or 'icon16/attach.png'
@@ -257,6 +314,17 @@ if CLIENT then
 		end
 
 		Tabs:AddSheet('#ultipar.effect', UserPanel, 'icon16/user.png', false, false, '')
+
+		if isfunction(action.CreateOptionMenu) then
+			local DScrollPanel = vgui.Create('DScrollPanel', Tabs)
+			local OptionPanel = vgui.Create('DForm', DScrollPanel)
+			OptionPanel:Dock(FILL)
+			OptionPanel.Paint = drawwhite
+
+			action.CreateOptionMenu(OptionPanel)
+
+			Tabs:AddSheet('#ultipar.options', DScrollPanel, 'icon16/wrench.png', false, false, '')
+		end
 	end
 
 	hook.Add('PopulateToolMenu', 'ultipar.menu', function()

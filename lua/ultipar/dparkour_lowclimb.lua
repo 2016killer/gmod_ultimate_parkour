@@ -14,20 +14,58 @@ end
 local unitvec = Vector(0, 0, 1)
 
 ---------------------- 菜单 ----------------------
-local dp_lc_workmode = CreateConVar('dp_lc_workmode', '1', { FCVAR_ARCHIVE, FCVAR_CLIENTCMD_CAN_EXECUTE, FCVAR_NOTIFY, FCVAR_SERVER_CAN_EXECUTE })
-local dp_lc_per = CreateConVar('dp_lc_per', '1', { FCVAR_ARCHIVE, FCVAR_CLIENTCMD_CAN_EXECUTE, FCVAR_NOTIFY, FCVAR_SERVER_CAN_EXECUTE })
+local dp_workmode = CreateConVar('dp_workmode', '1', { FCVAR_ARCHIVE, FCVAR_CLIENTCMD_CAN_EXECUTE, FCVAR_NOTIFY, FCVAR_SERVER_CAN_EXECUTE })
+local dp_los_cos = CreateConVar('dp_los_cos', '0.64', { FCVAR_ARCHIVE, FCVAR_CLIENTCMD_CAN_EXECUTE, FCVAR_NOTIFY, FCVAR_SERVER_CAN_EXECUTE })
+
+local dp_lc_keymode = CreateConVar('dp_lc_keymode', '1', { FCVAR_ARCHIVE, FCVAR_CLIENTCMD_CAN_EXECUTE, FCVAR_NOTIFY, FCVAR_SERVER_CAN_EXECUTE })
+local dp_lc_per = CreateConVar('dp_lc_per', '0.2', { FCVAR_ARCHIVE, FCVAR_CLIENTCMD_CAN_EXECUTE, FCVAR_NOTIFY, FCVAR_SERVER_CAN_EXECUTE })
 local dp_lc_max = CreateConVar('dp_lc_max', '0.75', { FCVAR_ARCHIVE, FCVAR_CLIENTCMD_CAN_EXECUTE, FCVAR_NOTIFY, FCVAR_SERVER_CAN_EXECUTE })
 local dp_lc_min = CreateConVar('dp_lc_min', '0.5', { FCVAR_ARCHIVE, FCVAR_CLIENTCMD_CAN_EXECUTE, FCVAR_NOTIFY, FCVAR_SERVER_CAN_EXECUTE })
 local dp_lcv_wmax = CreateConVar('dp_lcv_wmax', '2.5', { FCVAR_ARCHIVE, FCVAR_CLIENTCMD_CAN_EXECUTE, FCVAR_NOTIFY, FCVAR_SERVER_CAN_EXECUTE })
 local dp_lcv_hmax = CreateConVar('dp_lcv_hmax', '0.3', { FCVAR_ARCHIVE, FCVAR_CLIENTCMD_CAN_EXECUTE, FCVAR_NOTIFY, FCVAR_SERVER_CAN_EXECUTE })
+local dp_lcv_smin = CreateConVar('dp_lcv_smin', '200', { FCVAR_ARCHIVE, FCVAR_CLIENTCMD_CAN_EXECUTE, FCVAR_NOTIFY, FCVAR_SERVER_CAN_EXECUTE })
 
 local action, _ = UltiPar.Register('DParkour-LowClimb')
 if CLIENT then
 	action.label = '#dp.lowclimb'
 	action.icon = 'dparkour/icon.jpg'
+
+	action.CreateOptionMenu = function(panel)
+		panel:Clear()
+		panel:CheckBox('#dp.workmode', 'dp_workmode')
+		panel:ControlHelp('#dp.workmode.help')
+
+		panel:NumSlider('#dp.los_cos', 'dp_los_cos', 0, 1, 2)
+		panel:ControlHelp('#dp.los_cos.help')
+
+		panel:Help('#dp.lc.help')
+		
+		panel:CheckBox('#dp.lc_keymode', 'dp_lc_keymode')
+		panel:ControlHelp('#dp.lc_keymode.help')
+
+		panel:NumSlider('#dp.lc_max', 'dp_lc_max', 0, 1, 2)
+		panel:NumSlider('#dp.lc_min', 'dp_lc_min', 0, 1, 2)
+
+		panel:NumSlider('#dp.lcv_wmax', 'dp_lcv_wmax', 0, 3, 2)
+		panel:NumSlider('#dp.lcv_hmax', 'dp_lcv_hmax', 0, 1, 2)
+		panel:ControlHelp('#dp.lcv_hmax.help')
+		panel:NumSlider('#dp.lcv_smin', 'dp_lcv_smin', 100, 300, 0)
+		
+		local default = panel:Button('#default', '')
+		default.DoClick = function()
+			LocalPlayer():ConCommand('dp_workmode 1')
+			LocalPlayer():ConCommand('dp_los_cos 0.64')
+			LocalPlayer():ConCommand('dp_lc_per 0.2')
+			LocalPlayer():ConCommand('dp_lc_max 0.75')
+			LocalPlayer():ConCommand('dp_lc_min 0.5')
+			LocalPlayer():ConCommand('dp_lcv_wmax 2.5')
+			LocalPlayer():ConCommand('dp_lcv_hmax 0.3')
+			LocalPlayer():ConCommand('dp_lcv_smin 200')
+		end
+	end
 end
 
-action.Check = function(ply, data)
+action.Check = function(ply)
 	if ply:GetMoveType() == MOVETYPE_NOCLIP or ply:InVehicle() or !ply:Alive() then 
 		return
 	end
@@ -59,15 +97,23 @@ action.Check = function(ply, data)
 		maxs = bmaxs,
 	})
 
-	debugoverlay.Box(BlockTrace.HitPos, bmins, bmaxs, 0.05, 
-		BlockTrace.Hit and BlockTrace.HitNormal[3] < 0.707 and Color(255, 0, 0) or Color(0, 255, 0), 
-		true
-	)
+	debugoverlay.Box(BlockTrace.HitPos, bmins, bmaxs, 0.05, BlockTrace.Hit and BlockTrace.HitNormal[3] < 0.707 and Color(255, 0, 0) or Color(0, 255, 0))
 	if not BlockTrace.Hit or BlockTrace.HitNormal[3] >= 0.707 then
+		-- print('非障碍')
 		return
 	end
 
+	-- 判断是否对准了障碍物
+	local temp = -Vector(BlockTrace.HitNormal)
+	temp[3] = 0
+	if temp:Dot(eyeDir) < dp_los_cos:GetFloat() then 
+		-- print('未对准')
+		return 
+	end
+
+	-- 确保不是被玩家拿着的物品挡住了
 	if SERVER and BlockTrace.Entity:IsPlayerHolding() then
+		-- print('被玩家拿着')
 		return
 	end
 	
@@ -90,6 +136,7 @@ action.Check = function(ply, data)
 
 	-- 确保落脚位置不在滑坡上
 	if trace.HitNormal[3] < 0.707 then
+		-- print('在滑坡上')
 		return
 	end
 
@@ -97,7 +144,7 @@ action.Check = function(ply, data)
 	local trlen = trace.Fraction * (startpos[3] - endpos[3])
 	-- OK, 预留1的单位高度防止极端情况
 	if trlen < 1 then
-		// print('卡住了')
+		-- print('卡住了')
 		return
 	end
 	
@@ -105,12 +152,13 @@ action.Check = function(ply, data)
 	-- 必须确保障碍高度在lc_min和lc_max之间, 一般低于最低值的情况应该是踩空了
 	local blockheight = trace.HitPos[3] - pos[3]
 	if blockheight > lc_max * plyHeight or blockheight < lc_min * plyHeight then
+		-- print('高度不符合')
 		return
 	end
 
 	 
-	debugoverlay.Line(trace.StartPos, trace.HitPos, 0.05, Color(255, 255, 0), true)
-	debugoverlay.Box(trace.HitPos, dmins, dmaxs, 0.05, Color(255, 255, 0), true)
+	debugoverlay.Line(trace.StartPos, trace.HitPos, 0.05, Color(255, 255, 0))
+	debugoverlay.Box(trace.HitPos, dmins, dmaxs, 0.05, Color(255, 255, 0))
 
 	-- OK, 如果按下了前向键的话, 再检测一下是否符合翻越条件
 	if ply:KeyDown(IN_FORWARD) then
@@ -133,11 +181,12 @@ action.Check = function(ply, data)
 
 		-- 确保落在凹陷的地方
 		if vchecktrace.HitPos[3] - pos[3] > lcv_hmax * plyHeight then
+			-- print('翻越高度不符合')
 			return
 		end
 
-		debugoverlay.Line(vchecktrace.StartPos, vchecktrace.HitPos, 0.05, Color(0, 0, 255), true)
-		debugoverlay.Box(vchecktrace.HitPos, dmins, dmaxs, 0.05, Color(0, 0, 255), true)
+		debugoverlay.Line(vchecktrace.StartPos, vchecktrace.HitPos, 0.05, Color(0, 0, 255))
+		debugoverlay.Box(vchecktrace.HitPos, dmins, dmaxs, 0.05, Color(0, 0, 255))
 
 
 		startpos = vchecktrace.HitPos + unitvec
@@ -152,33 +201,30 @@ action.Check = function(ply, data)
 		})
 
 		if hchecktrace.HitPos:Distance2D(trace.HitPos) > lcv_wmax * plyWidth then
+			-- print('翻越宽度不符合')
 			return
 		end
 
-		debugoverlay.Line(hchecktrace.StartPos, hchecktrace.HitPos, 0.05, Color(0, 0, 0), true)
-		debugoverlay.Box(hchecktrace.HitPos, dmins, dmaxs, 0.05, Color(0, 0, 0), true)
+		debugoverlay.Line(hchecktrace.StartPos, hchecktrace.HitPos, 0.05, Color(0, 0, 0))
+		debugoverlay.Box(hchecktrace.HitPos, dmins, dmaxs, 0.05, Color(0, 0, 0))
+
+		return {hchecktrace, true}
 	else
 		trace.HitPos[3] = trace.HitPos[3] + 1
-		return trace
+		return {trace, false}
 	end
 
 end
 
-if CLIENT then
-	hook.Add('Think', 'dparkour_lowclimb', function()
-		action.Check(LocalPlayer())
-	end)
-end
-
-action.CheckEnd = 0.6
+action.CheckEnd = 0.5
 
 action.Play = function(ply, data)
-	local result = data.result
-	local blockdis = data.blockdis
-	local blockheight = data.blockheight
+	local trace, dovault = unpack(data)
 
-	UltiPar.StartEasyMove(ply, result[1].HitPos, 0.5)
+	UltiPar.StartEasyMove(ply, trace.HitPos, 0.5)
 end
+
+
 
 // hook.Add('CreateMove', 'dj2climb', function(cmd)
 // 	if Notclimbing then return end
@@ -236,19 +282,71 @@ action.Effects['VManip-datae'] = {
 	func = nil,
 }
 
-local disableLegs = false
+
+
+
+if CLIENT then
+	local triggertime = 0
+	hook.Add('Think', 'dparkour.lowclimb.trigger', function()
+		local ply = LocalPlayer()
+		if dp_workmode:GetBool() then return end
+		if dp_lc_keymode:GetBool() then 
+			if not ply:KeyDown(IN_JUMP) then 
+				return 
+			end
+		else
+			if not ply.dp_runtrigger then 
+				return 
+			end
+		end
+
+		local curtime = CurTime()
+		if curtime - triggertime < dp_lc_per:GetFloat() then return end
+		triggertime = curtime
+
+		UltiPar.Trigger(LocalPlayer(), 'DParkour-LowClimb')
+	end)
+
+	concommand.Add('+dp_lowclimb_cl', function(ply)
+		ply.dp_runtrigger = true
+	end)
+
+	concommand.Add('-dp_lowclimb_cl', function(ply)
+		ply.dp_runtrigger = false
+	end)
+
+elseif SERVER then
+	local triggertime = 0
+	hook.Add('PlayerPostThink', 'dparkour.lowclimb.trigger', function(ply)
+		if not dp_workmode:GetBool() then return end
+		if dp_lc_keymode:GetBool() then 
+			if not ply:KeyDown(IN_JUMP) then 
+				return 
+			end
+		else
+			if not ply.dp_runtrigger then 
+				return 
+			end
+		end
+
+		local curtime = CurTime()
+		if curtime - triggertime < dp_lc_per:GetFloat() then return end
+		triggertime = curtime
+
+		UltiPar.Trigger(ply, 'DParkour-LowClimb')
+	end)
+
+	concommand.Add('+dp_lowclimb_sv', function(ply)
+		ply.dp_runtrigger = true
+	end)
+
+	concommand.Add('-dp_lowclimb_sv', function(ply)
+		ply.dp_runtrigger = false
+	end)
+
+end
+
+
 hook.Add('ShouldDisableLegs', 'dparkour.gmodleg', function()
-	if disableLegs then return true end
+	return VMLegs:IsActive()
 end)
-
-// hook.Add('CreateMove', 'dj2climb', function(cmd)
-// 	if Notclimbing then return end
-// 	//cmd:ClearButtons()
-// 	if !LocalPlayer():Alive() then Notclimbing = true end
-// 	cmd:ClearMovement()
-// 	cmd:RemoveKey(IN_JUMP)
-// 	if NeedDuck then cmd:AddKey(IN_DUCK) end
-// end)
-
-
-
