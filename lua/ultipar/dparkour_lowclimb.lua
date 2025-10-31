@@ -11,7 +11,29 @@ local function XYNormal(v)
 	return v
 end
 
-local unitvec = Vector(0, 0, 1)
+local function debugwireframebox(pos, mins, maxs, lifetime, color, ignoreZ)
+	lifetime = lifetime or 1
+	color = color or Color(255,255,255)
+	ignoreZ = ignoreZ or false
+
+	local ref = mins + pos
+
+	local temp = maxs - mins
+	local axes = {Vector(0, 0, temp.z), Vector(0, temp.y, 0), Vector(temp.x, 0, 0)}
+
+	for i = 1, 3 do
+		for j = 0, 3 do
+			local pos1 = ref
+			if bit.band(j, 0x01) ~= 0 then pos1 = pos1 + axes[1] end
+			if bit.band(j, 0x02) ~= 0 then pos1 = pos1 + axes[2] end
+
+			debugoverlay.Line(pos1, pos1 + axes[3], lifetime, color, ignoreZ)
+		end
+		axes[i], axes[3] = axes[3], axes[i]
+	end
+end
+
+local unitzvec = Vector(0, 0, 1)
 
 ---------------------- 菜单 ----------------------
 local dp_workmode = CreateConVar('dp_workmode', '1', { FCVAR_ARCHIVE, FCVAR_CLIENTCMD_CAN_EXECUTE, FCVAR_NOTIFY, FCVAR_SERVER_CAN_EXECUTE })
@@ -40,6 +62,8 @@ if CLIENT then
 
 		panel:Help('#dp.lc.help')
 		
+		panel:NumSlider('#dp.lc_per', 'dp_lc_per', 0.2, 3600, 2)
+
 		panel:CheckBox('#dp.lc_keymode', 'dp_lc_keymode')
 		panel:ControlHelp('#dp.lc_keymode.help')
 
@@ -71,7 +95,7 @@ action.Check = function(ply)
 	end
 	
 	local eyeDir = XYNormal(ply:GetForward())
-	local pos = ply:GetPos() + unitvec
+	local pos = ply:GetPos() + unitzvec
 
 	local bmins, bmaxs = ply:GetCollisionBounds()
 	local plyWidth = math.max(bmaxs[1] - bmins[1], bmaxs[2] - bmins[2])
@@ -97,9 +121,9 @@ action.Check = function(ply)
 		maxs = bmaxs,
 	})
 
-	debugoverlay.Box(BlockTrace.HitPos, bmins, bmaxs, 0.05, BlockTrace.Hit and BlockTrace.HitNormal[3] < 0.707 and Color(255, 0, 0) or Color(0, 255, 0))
+	debugwireframebox(BlockTrace.HitPos, bmins, bmaxs, 0.5, BlockTrace.Hit and BlockTrace.HitNormal[3] < 0.707 and Color(255, 0, 0) or Color(0, 255, 0))
 	if not BlockTrace.Hit or BlockTrace.HitNormal[3] >= 0.707 then
-		-- print('非障碍')
+		// print('非障碍')
 		return
 	end
 
@@ -107,13 +131,13 @@ action.Check = function(ply)
 	local temp = -Vector(BlockTrace.HitNormal)
 	temp[3] = 0
 	if temp:Dot(eyeDir) < dp_los_cos:GetFloat() then 
-		-- print('未对准')
+		// print('未对准')
 		return 
 	end
 
 	-- 确保不是被玩家拿着的物品挡住了
 	if SERVER and BlockTrace.Entity:IsPlayerHolding() then
-		-- print('被玩家拿着')
+		// print('被玩家拿着')
 		return
 	end
 	
@@ -122,8 +146,8 @@ action.Check = function(ply)
 	local dmins, dmaxs = ply:GetHullDuck()
 
 	-- 从碰撞点往前走半个身位看看有没有落脚点
-	local startpos = BlockTrace.HitPos + Vector(0, 0, lc_max * plyHeight) + eyeDir * plyWidth * 0.5
-	local endpos = BlockTrace.HitPos - eyeDir * plyWidth * 0.5
+	local startpos = BlockTrace.HitPos + unitzvec * lc_max * plyHeight + eyeDir * plyWidth * 0.5
+	local endpos = BlockTrace.HitPos + eyeDir * plyWidth * 0.5
 
 	local trace = util.TraceHull({
 		filter = ply, 
@@ -136,15 +160,15 @@ action.Check = function(ply)
 
 	-- 确保落脚位置不在滑坡上
 	if trace.HitNormal[3] < 0.707 then
-		-- print('在滑坡上')
+		// print('在滑坡上')
 		return
 	end
 
 	-- 检测落脚点是否有足够空间
 	local trlen = trace.Fraction * (startpos[3] - endpos[3])
 	-- OK, 预留1的单位高度防止极端情况
-	if trlen < 1 then
-		-- print('卡住了')
+	if trace.StartSolid or trlen < 1 then
+		// print('卡住了')
 		return
 	end
 	
@@ -152,23 +176,33 @@ action.Check = function(ply)
 	-- 必须确保障碍高度在lc_min和lc_max之间, 一般低于最低值的情况应该是踩空了
 	local blockheight = trace.HitPos[3] - pos[3]
 	if blockheight > lc_max * plyHeight or blockheight < lc_min * plyHeight then
-		-- print('高度不符合')
+		// print('高度不符合')
 		return
 	end
 
-	 
-	debugoverlay.Line(trace.StartPos, trace.HitPos, 0.05, Color(255, 255, 0))
-	debugoverlay.Box(trace.HitPos, dmins, dmaxs, 0.05, Color(255, 255, 0))
+	// PrintTable(trace)
+	debugoverlay.Line(trace.StartPos, trace.HitPos, 0.5, Color(255, 255, 0))
+	debugwireframebox(trace.StartPos, dmins, dmaxs, 0.5, Color(0, 255, 255))
+	debugwireframebox(trace.HitPos, dmins, dmaxs, 0.5, Color(255, 255, 0))
 
 	-- OK, 如果按下了前向键的话, 再检测一下是否符合翻越条件
 	if ply:KeyDown(IN_FORWARD) then
 		-- 翻越不需要检查落脚点是否在斜坡上
 		-- lcv_hmax 新落脚点最大高度。
 		-- lcv_wmax 是最大翻越宽度
-		
+		local maxVaultWidthVec = eyeDir * plyWidth * lcv_wmax
+
+		local simpletrace1 = util.QuickTrace(trace.HitPos + unitzvec * 2, maxVaultWidthVec, ply)
+		local simpletrace2 = util.QuickTrace(trace.HitPos + unitzvec * 0.25 * plyHeight, maxVaultWidthVec, ply)
+
+		if simpletrace1.Hit or simpletrace2.Hit then
+			// print('阻挡')
+			return {trace, false}
+		end
+
 		-- 检查凹陷是否符合条件 
-		startpos = trace.HitPos + eyeDir * plyWidth * lcv_wmax
-		endpos = startpos - Vector(0, 0, blockheight)
+		startpos = trace.HitPos + maxVaultWidthVec
+		endpos = startpos - unitzvec * blockheight
 
 		local vchecktrace = util.TraceHull({
 			filter = ply, 
@@ -179,18 +213,23 @@ action.Check = function(ply)
 			maxs = dmaxs,
 		})
 
-		-- 确保落在凹陷的地方
-		if vchecktrace.HitPos[3] - pos[3] > lcv_hmax * plyHeight then
-			-- print('翻越高度不符合')
-			return
+		if vchecktrace.StartSolid then
+			// print('翻越高度检测, 卡住了')
+			return {trace, false}
 		end
 
-		debugoverlay.Line(vchecktrace.StartPos, vchecktrace.HitPos, 0.05, Color(0, 0, 255))
-		debugoverlay.Box(vchecktrace.HitPos, dmins, dmaxs, 0.05, Color(0, 0, 255))
+		-- 确保落在凹陷的地方
+		if vchecktrace.HitPos[3] - pos[3] > lcv_hmax * plyHeight then
+			// print('翻越高度不符合')
+			return {trace, false}
+		end
+
+		debugoverlay.Line(vchecktrace.StartPos, vchecktrace.HitPos, 0.5, Color(0, 0, 255))
+		debugwireframebox(vchecktrace.HitPos, dmins, dmaxs, 0.5, Color(0, 0, 255))
 
 
-		startpos = vchecktrace.HitPos + unitvec
-		endpos = startpos - eyeDir * plyWidth * lcv_wmax
+		startpos = vchecktrace.HitPos + unitzvec
+		endpos = startpos - maxVaultWidthVec
 		hchecktrace = util.TraceHull({
 			filter = ply, 
 			mask = MASK_PLAYERSOLID,
@@ -201,12 +240,12 @@ action.Check = function(ply)
 		})
 
 		if hchecktrace.HitPos:Distance2D(trace.HitPos) > lcv_wmax * plyWidth then
-			-- print('翻越宽度不符合')
-			return
+			// print('翻越宽度不符合')
+			return {trace, false}
 		end
 
-		debugoverlay.Line(hchecktrace.StartPos, hchecktrace.HitPos, 0.05, Color(0, 0, 0))
-		debugoverlay.Box(hchecktrace.HitPos, dmins, dmaxs, 0.05, Color(0, 0, 0))
+		debugoverlay.Line(hchecktrace.StartPos, hchecktrace.HitPos, 0.5, Color(0, 0, 0))
+		debugwireframebox(hchecktrace.HitPos, dmins, dmaxs, 0.5, Color(0, 0, 0))
 
 		return {hchecktrace, true}
 	else
@@ -224,16 +263,6 @@ action.Play = function(ply, data)
 	UltiPar.StartEasyMove(ply, trace.HitPos, 0.5)
 end
 
-
-
-// hook.Add('CreateMove', 'dj2climb', function(cmd)
-// 	if Notclimbing then return end
-// 	//cmd:ClearButtons()
-// 	if !LocalPlayer():Alive() then Notclimbing = true end
-// 	cmd:ClearMovement()
-// 	cmd:RemoveKey(IN_JUMP)
-// 	if NeedDuck then cmd:AddKey(IN_DUCK) end
-// end)
 
 action.Effects = action.Effects or {}
 
@@ -307,8 +336,16 @@ if CLIENT then
 		UltiPar.Trigger(LocalPlayer(), 'DParkour-LowClimb')
 	end)
 
+	hook.Add('KeyPress', 'dparkour.lowclimb.trigger', function(ply, key)
+		if key == IN_JUMP and dp_lc_keymode:GetBool() and not dp_workmode:GetBool() then 
+			UltiPar.Trigger(ply, 'DParkour-LowClimb') 
+		end
+	end)
+
+
 	concommand.Add('+dp_lowclimb_cl', function(ply)
 		ply.dp_runtrigger = true
+		UltiPar.Trigger(LocalPlayer(), 'DParkour-LowClimb')
 	end)
 
 	concommand.Add('-dp_lowclimb_cl', function(ply)
@@ -336,14 +373,20 @@ elseif SERVER then
 		UltiPar.Trigger(ply, 'DParkour-LowClimb')
 	end)
 
+	hook.Add('KeyPress', 'dparkour.lowclimb.trigger', function(ply, key)
+		if key == IN_JUMP and dp_lc_keymode:GetBool() and dp_workmode:GetBool() then 
+			UltiPar.Trigger(ply, 'DParkour-LowClimb') 
+		end
+	end)
+
 	concommand.Add('+dp_lowclimb_sv', function(ply)
 		ply.dp_runtrigger = true
+		UltiPar.Trigger(ply, 'DParkour-LowClimb')
 	end)
 
 	concommand.Add('-dp_lowclimb_sv', function(ply)
 		ply.dp_runtrigger = false
 	end)
-
 end
 
 
