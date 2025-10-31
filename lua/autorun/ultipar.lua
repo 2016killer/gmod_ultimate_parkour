@@ -33,44 +33,82 @@ local function Register(name, action)
 		exist = false
 	end
 
-	if not exist and CLIENT then 
+	if not exist and CLIENT and action.ActionManager then 
 		UltiPar.ActionManager:RefreshNode() 
 	end
 
 	return result, exist
 end
 
-local function Trigger(ply, target, data)
+local function Trigger(ply, target)
 	-- 触发动作
-	if ply.ultipar_playing then 
+	-- 客户端调用执行Check, 成功后向服务器请求执行Play
+	-- 服务器调用执行Check, 成功后执行Play并通知客户端执行 Play
+
+	if SERVER and ply.ultipar_playing then 
 		return 
 	end
 
 	-- 当动作不存在时引发异常
 	local action, actionName = UltiPar.GetAction(target)
 
-	local playcall = action.Play
 	local check = action.Check
-	local checkend = action.CheckEnd
+	if isfunction(check) then
+		local checkresult = check(ply)
+		if checkresult then
+			if SERVER and isfunction(action.Play) then
+				local succ, err = pcall(hook.Run, 'UltiParStart', ply, actionName, checkresult)
+				if not succ then
+					ErrorNoHalt(string.format('UltiParStart hook error: %s\n', err))
+				end
 
-	if isfunction(check) and check(ply, data) then
-		if isfunction(playcall) then
-			ply.ultipar_playing = actionName
-			ply.ultipar_end = isnumber(checkend) and CurTime() + checkend or checkend
+				-- 标记进行中的动作和结束条件, 如果结束条件是实数则使用定时结束, 如果是函数则使用函数结束
+				local checkend = action.CheckEnd
+				ply.ultipar_playing = actionName
+				ply.ultipar_end = {
+					isnumber(checkend) and CurTime() + checkend or checkend,
+					checkresult
+				}
+				
+				-- 执行动作
+				action.Play(ply, checkresult)
 
-			playcall(ply, data)
+				-- 执行特效
+				// local view = action.Views[ply.ultipar_effect[actionName]]
+				// if istable(view) and isfunction(view.func) then
+				// 	view.func(ply, checkresult)
+				// end
+				// ply.ultipar_views = nil
+				// if isfunction(action.Views[]) then
+				// 	action.End(ply, checkresult)
+				// end
+
+			elseif CLIENT then
+				 
+
+			end
 		end
 	end
 end
 
 UltiPar.GetAction = GetAction
-UltiPar.Play = PlayAction
-UltiPar.Check = Check
 UltiPar.Trigger = Trigger
 UltiPar.Register = Register
 
 
 if SERVER then
+	util.AddNetworkString('UltiParPlay')
+
+	net.Receive('UltiParPlay', function(len, ply)
+		local target = net.ReadString()
+		local checkresult = net.ReadTable()
+
+		local action, actionName = UltiPar.GetAction(target)
+		if isfunction(action.Play) then
+
+		end
+	end)
+
 	local function EasyMoveCall(ply, mv, cmd)
 		local dt = CurTime() - ply.ultipar_move.starttime
 		
@@ -121,31 +159,41 @@ if SERVER then
 
 	hook.Add('PlayerPostThink', 'ultipar.checkend', function(ply)
 		if ply.ultipar_playing == nil then return end
-		local checkend = ply.ultipar_end
+		local checkend, checkresult = unpack(ply.ultipar_end)
 
+		local flag
 		if isnumber(checkend) then
-			if CurTime() > checkend then
-				ply.ultipar_playing = nil
-				ply.ultipar_end = nil
+			flag = CurTime() > checkend	
+		elseif isfunction(checkend) then
+			flag = checkend(ply, checkresult)
+		end
+
+		if flag then
+			local succ, err = pcall(hook.Run, 'UltiParEnd', ply, ply.ultipar_playing, checkresult)
+			if not succ then
+				ErrorNoHalt(string.format('UltiParEnd hook error: %s\n', err))
 			end
-		elseif isfunction(checkend) and checkend(ply) then
+			
 			ply.ultipar_playing = nil
 			ply.ultipar_end = nil
 		end
+
 	end)
 
-	hook.Add('PlayerSpawn', 'ultipar.init', function(ply)
+
+	local function Clear(ply)
 		ply.ultipar_playing = nil
 		ply.ultipar_move = nil
 		ply.ultipar_end = nil
-	end)
+	end
 
-	concommand.Add('ultipar_move_debug', function(ply, cmd, args)
-		if ply:IsAdmin() then
-			local tr = ply:GetEyeTrace()
-			local endpos = tr.HitPos + tr.HitNormal * 64
-			StartEasyMove(ply, endpos, 1)
-		end
+	hook.Add('PlayerDeath', 'ultipar.clear', Clear)
+
+	hook.Add('PlayerSilentDeath', 'ultipar.clear', Clear)
+	
+	hook.Add('PlayerInitialSpawn', 'ultipar.init', function(ply)
+		Clear(ply)
+		ply.ultipar_effect = {}
 	end)
 
 	UltiPar.StartEasyMove = StartEasyMove
@@ -174,6 +222,11 @@ for _, filename in pairs(filelist) do
 	end
 end
 
+local filelist = file.Find('ultipar/*.json', 'LUA')
+for _, filename in pairs(filelist) do
+	print(filename)
+end
+
 if CLIENT then
 	-- UI界面
 	UltiPar.CreateActionEditor = function(target)
@@ -193,48 +246,17 @@ if CLIENT then
 		local UserPanel = vgui.Create('DPanel', Tabs)
 		UserPanel:Dock(FILL)
 
+		local effecttree = vgui.Create('DTree', UserPanel)
+		effecttree:Dock(FILL)
 
-		local soundbrowser = vgui.Create('DFileBrowser', UserPanel)
-		function soundbrowser:OnDoubleClick(path)
-			if soundbrowser.soundobj then
-				soundbrowser.soundobj:Stop()
-				soundbrowser.soundobj = nil	
-			end
-			soundbrowser.selectFile = string.sub(path, 7, -1)
-			soundbrowser.soundobj = CreateSound(LocalPlayer(), soundbrowser.selectFile)
-			soundbrowser.soundobj:PlayEx(1, 100)
+		for k, v in pairs(action.Views) do
+			local node = effecttree:AddNode(
+				isstring(v.label) and v.label or k, 
+				isstring(v.icon) and v.icon or 'icon16/attach.png'
+			)
 		end
 
-		function soundbrowser:OnRemove()
-			if soundbrowser.soundobj then
-				soundbrowser.soundobj:Stop()
-				soundbrowser.soundobj = nil	
-			end
-		end
-
-		local viewtree = vgui.Create('DTree', UserPanel)
-
-		local div = vgui.Create('DHorizontalDivider', UserPanel)
-		div:Dock(FILL)
-		div:SetLeft(viewtree)
-		div:SetRight(soundbrowser)
-		div:SetDividerWidth(4)
-		div:SetLeftMin(20) 
-		div:SetRightMin(20)
-		div:SetLeftWidth(200)
-
-
-		Tabs:AddSheet('#ultipar.view', UserPanel, 'icon16/user.png', false, false, '')
-
-		if isfunction(action.CreateOptionMenu) then
-			local OptionPanel = vgui.Create('DPanel', Tabs)
-			OptionPanel:Dock(FILL)
-			action.CreateOptionMenu(OptionPanel)
-
-			Tabs:AddSheet('#ultipar.option', OptionPanel, 'icon16/application_edit.png', false, false, '')
-		end
-
-
+		Tabs:AddSheet('#ultipar.effect', UserPanel, 'icon16/user.png', false, false, '')
 	end
 
 	hook.Add('PopulateToolMenu', 'ultipar.menu', function()
@@ -281,6 +303,4 @@ if CLIENT then
 			end)
 	end)
 end
-
-
 

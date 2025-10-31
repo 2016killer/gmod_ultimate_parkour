@@ -4,16 +4,192 @@
 此文件为其修改版本。
 ]]--
 
----------------------- 翻越动作 ----------------------
-local action_vault, _ = UltiPar.Register('DParkour-Vault')
-if CLIENT then
-	action_vault.label = '#dp.vault'
-	action_vault.icon = 'dparkour/icon.jpg'
+---------------------- 低爬动作 ----------------------
+local function XYNormal(v)
+	v[3] = 0
+	v:Normalize()
+	return v
 end
 
+local unitvec = Vector(0, 0, 1)
 
--- 视图
-action_vault.Views = action_vault.Views or {}
+---------------------- 菜单 ----------------------
+local dp_lc_workmode = CreateConVar('dp_lc_workmode', '1', { FCVAR_ARCHIVE, FCVAR_CLIENTCMD_CAN_EXECUTE, FCVAR_NOTIFY, FCVAR_SERVER_CAN_EXECUTE })
+local dp_lc_per = CreateConVar('dp_lc_per', '1', { FCVAR_ARCHIVE, FCVAR_CLIENTCMD_CAN_EXECUTE, FCVAR_NOTIFY, FCVAR_SERVER_CAN_EXECUTE })
+local dp_lc_max = CreateConVar('dp_lc_max', '0.75', { FCVAR_ARCHIVE, FCVAR_CLIENTCMD_CAN_EXECUTE, FCVAR_NOTIFY, FCVAR_SERVER_CAN_EXECUTE })
+local dp_lc_min = CreateConVar('dp_lc_min', '0.5', { FCVAR_ARCHIVE, FCVAR_CLIENTCMD_CAN_EXECUTE, FCVAR_NOTIFY, FCVAR_SERVER_CAN_EXECUTE })
+local dp_lcv_wmax = CreateConVar('dp_lcv_wmax', '2.5', { FCVAR_ARCHIVE, FCVAR_CLIENTCMD_CAN_EXECUTE, FCVAR_NOTIFY, FCVAR_SERVER_CAN_EXECUTE })
+local dp_lcv_hmax = CreateConVar('dp_lcv_hmax', '0.3', { FCVAR_ARCHIVE, FCVAR_CLIENTCMD_CAN_EXECUTE, FCVAR_NOTIFY, FCVAR_SERVER_CAN_EXECUTE })
+
+local action, _ = UltiPar.Register('DParkour-LowClimb')
+if CLIENT then
+	action.label = '#dp.lowclimb'
+	action.icon = 'dparkour/icon.jpg'
+end
+
+action.Check = function(ply, data)
+	if ply:GetMoveType() == MOVETYPE_NOCLIP or ply:InVehicle() or !ply:Alive() then 
+		return
+	end
+	
+	local eyeDir = XYNormal(ply:GetForward())
+	local pos = ply:GetPos() + unitvec
+
+	local bmins, bmaxs = ply:GetCollisionBounds()
+	local plyWidth = math.max(bmaxs[1] - bmins[1], bmaxs[2] - bmins[2])
+	local plyHeight = bmaxs[3] - bmins[3]
+	
+	local lc_min = dp_lc_min:GetFloat()
+	local lc_max = dp_lc_max:GetFloat()
+	local lcv_wmax = dp_lcv_wmax:GetFloat()
+	local lcv_hmax = dp_lcv_hmax:GetFloat()
+
+	-- 把碰撞盒最低点抬到18单位, 主要是因为18一般是台阶的高度, 是能够走上去的
+	bmaxs[3] = bmins[3] + lc_min * plyHeight
+	bmins[3] = math.max(bmins[3], math.min(18, bmaxs[3]))
+	
+
+	-- 检测障碍
+	local BlockTrace = util.TraceHull({
+		filter = ply, 
+		mask = MASK_PLAYERSOLID,
+		start = pos,
+		endpos = pos + eyeDir * plyWidth * 2,
+		mins = bmins,
+		maxs = bmaxs,
+	})
+
+	debugoverlay.Box(BlockTrace.HitPos, bmins, bmaxs, 0.05, 
+		BlockTrace.Hit and BlockTrace.HitNormal[3] < 0.707 and Color(255, 0, 0) or Color(0, 255, 0), 
+		true
+	)
+	if not BlockTrace.Hit or BlockTrace.HitNormal[3] >= 0.707 then
+		return
+	end
+
+	if SERVER and BlockTrace.Entity:IsPlayerHolding() then
+		return
+	end
+	
+	-- 现在要找到落脚点并且确保落脚点有足够空间, 所以检测蹲时的碰撞盒
+	-- 假设蹲时的碰撞盒小于站立时
+	local dmins, dmaxs = ply:GetHullDuck()
+
+	-- 从碰撞点往前走半个身位看看有没有落脚点
+	local startpos = BlockTrace.HitPos + Vector(0, 0, lc_max * plyHeight) + eyeDir * plyWidth * 0.5
+	local endpos = BlockTrace.HitPos - eyeDir * plyWidth * 0.5
+
+	local trace = util.TraceHull({
+		filter = ply, 
+		mask = MASK_PLAYERSOLID,
+		start = startpos,
+		endpos = endpos,
+		mins = dmins,
+		maxs = dmaxs,
+	})
+
+	-- 确保落脚位置不在滑坡上
+	if trace.HitNormal[3] < 0.707 then
+		return
+	end
+
+	-- 检测落脚点是否有足够空间
+	local trlen = trace.Fraction * (startpos[3] - endpos[3])
+	-- OK, 预留1的单位高度防止极端情况
+	if trlen < 1 then
+		// print('卡住了')
+		return
+	end
+	
+
+	-- 必须确保障碍高度在lc_min和lc_max之间, 一般低于最低值的情况应该是踩空了
+	local blockheight = trace.HitPos[3] - pos[3]
+	if blockheight > lc_max * plyHeight or blockheight < lc_min * plyHeight then
+		return
+	end
+
+	 
+	debugoverlay.Line(trace.StartPos, trace.HitPos, 0.05, Color(255, 255, 0), true)
+	debugoverlay.Box(trace.HitPos, dmins, dmaxs, 0.05, Color(255, 255, 0), true)
+
+	-- OK, 如果按下了前向键的话, 再检测一下是否符合翻越条件
+	if ply:KeyDown(IN_FORWARD) then
+		-- 翻越不需要检查落脚点是否在斜坡上
+		-- lcv_hmax 新落脚点最大高度。
+		-- lcv_wmax 是最大翻越宽度
+		
+		-- 检查凹陷是否符合条件 
+		startpos = trace.HitPos + eyeDir * plyWidth * lcv_wmax
+		endpos = startpos - Vector(0, 0, blockheight)
+
+		local vchecktrace = util.TraceHull({
+			filter = ply, 
+			mask = MASK_PLAYERSOLID,
+			start = startpos,
+			endpos = endpos,
+			mins = dmins,
+			maxs = dmaxs,
+		})
+
+		-- 确保落在凹陷的地方
+		if vchecktrace.HitPos[3] - pos[3] > lcv_hmax * plyHeight then
+			return
+		end
+
+		debugoverlay.Line(vchecktrace.StartPos, vchecktrace.HitPos, 0.05, Color(0, 0, 255), true)
+		debugoverlay.Box(vchecktrace.HitPos, dmins, dmaxs, 0.05, Color(0, 0, 255), true)
+
+
+		startpos = vchecktrace.HitPos + unitvec
+		endpos = startpos - eyeDir * plyWidth * lcv_wmax
+		hchecktrace = util.TraceHull({
+			filter = ply, 
+			mask = MASK_PLAYERSOLID,
+			start = startpos,
+			endpos = endpos,
+			mins = dmins,
+			maxs = dmaxs,
+		})
+
+		if hchecktrace.HitPos:Distance2D(trace.HitPos) > lcv_wmax * plyWidth then
+			return
+		end
+
+		debugoverlay.Line(hchecktrace.StartPos, hchecktrace.HitPos, 0.05, Color(0, 0, 0), true)
+		debugoverlay.Box(hchecktrace.HitPos, dmins, dmaxs, 0.05, Color(0, 0, 0), true)
+	else
+		trace.HitPos[3] = trace.HitPos[3] + 1
+		return trace
+	end
+
+end
+
+if CLIENT then
+	hook.Add('Think', 'dparkour_lowclimb', function()
+		action.Check(LocalPlayer())
+	end)
+end
+
+action.CheckEnd = 0.6
+
+action.Play = function(ply, data)
+	local result = data.result
+	local blockdis = data.blockdis
+	local blockheight = data.blockheight
+
+	UltiPar.StartEasyMove(ply, result[1].HitPos, 0.5)
+end
+
+// hook.Add('CreateMove', 'dj2climb', function(cmd)
+// 	if Notclimbing then return end
+// 	//cmd:ClearButtons()
+// 	if !LocalPlayer():Alive() then Notclimbing = true end
+// 	cmd:ClearMovement()
+// 	cmd:RemoveKey(IN_JUMP)
+// 	if NeedDuck then cmd:AddKey(IN_DUCK) end
+// end)
+
+action.Effects = action.Effects or {}
 
 
 if CLIENT then
@@ -33,18 +209,8 @@ if CLIENT then
 	end)
 end
 
-local function VManipMonkeyBaiLang(ply)
-	if CLIENT then
-		vault_punch = true
-		vault_punch_vel = 50
-		VManip:PlayAnim('longvault1')
-		VMLegs:PlayAnim('monkeyvaultnew')
-	else
-		ply:ViewPunch(Angle(10, 0, 0))
-	end
-end
 
-local function VManipLazyBaiLang(ply)
+local function VManipBaiLang(ply, data)
 	if CLIENT then
 		vault_punch = true
 		vault_punch_vel = 50
@@ -55,55 +221,25 @@ local function VManipLazyBaiLang(ply)
 	end
 end
 
-action_vault.Views['VManip-Monkey-白狼'] = {
-	label = '#dp.VManipMonkeyBaiLang',
-	func = VManipMonkeyBaiLang,
+action.Effects['VManip-白狼'] = {
+	label = '#dp.VManipBaiLang',
+	func = nil,
 }
 
-action_vault.Views['VManip-Lazy-白狼'] = {
-	label = '#dp.VManipLazyBaiLang',
-	func = VManipLazyBaiLang,
+action.Effects['VManip-mtbNTB'] = {
+	label = '#dp.VManipMtbNTB',
+	func = nil,
 }
 
-
-
-
-
-// VManipMonkeyBaiLang = nil
-// VManipLazyBaiLang = nil
-
-
+action.Effects['VManip-datae'] = {
+	label = '#dp.VManipdatae',
+	func = nil,
+}
 
 local disableLegs = false
 hook.Add('ShouldDisableLegs', 'dparkour.gmodleg', function()
 	if disableLegs then return true end
 end)
-
-
-
-action_vault.Check = function(ply, data)
-	if data == nil then return false end
-
-	local result = data.result
-	local blockdis = data.blockdis
-	local blockheight = data.blockheight
-
-	return true
-end
-
-action_vault.CheckEnd = 0.6
-action_vault.Play = function(ply, data)
-	local result = data.result
-	local blockdis = data.blockdis
-	local blockheight = data.blockheight
-
-	UltiPar.StartEasyMove(ply, result[1].HitPos, 0.5)
-end
-
----------------------- 低爬动作 ----------------------
-
-
----------------------- 高爬动作 ----------------------
 
 // hook.Add('CreateMove', 'dj2climb', function(cmd)
 // 	if Notclimbing then return end
@@ -115,110 +251,4 @@ end
 // end)
 
 
-local up_dpar_per = CreateConVar('up_dpar_per', '1', { FCVAR_ARCHIVE, FCVAR_CLIENTCMD_CAN_EXECUTE, FCVAR_NOTIFY, FCVAR_SERVER_CAN_EXECUTE })
-
-local function XYNormal(v)
-	v[3] = 0
-	v:Normalize()
-	return v
-end
-
-local function TotalCheck(ply)
-	if ply:GetMoveType() == MOVETYPE_NOCLIP or ply:InVehicle() or !ply:Alive() then 
-		return 
-	end
-	
-	local pos = ply:GetPos()
-	local pmins, pmaxs = ply:GetCollisionBounds()
-	local eyeDir = XYNormal(ply:GetForward())
-
-	local plyHeight = pmaxs[3] - pmins[3]
-	local playWidth = math.max(pmaxs[1] - pmins[1], pmaxs[2] - pmins[2])
-
-
-	-- 检测是否有障碍以及障碍距离
-	local BlockTrace = util.TraceHull({
-		filter = ply, 
-		mask = MASK_PLAYERSOLID,
-		start = pos,
-		endpos = pos + eyeDir * playWidth * 3,
-		mins = pmins,
-		maxs = pmaxs,
-	})
-
-	if not BlockTrace.Hit or BlockTrace.HitNormal[3] > 0.707 then
-		// print('检测到障碍')
-		return
-	end
-	if SERVER and BlockTrace.Entity:IsPlayerHolding() then
-		return
-	end
-
-	local BlockDis = pos:Distance2D(BlockTrace.HitPos)
-
-
-	-- 障碍高度估算
-	local VrulerLen = plyHeight * 2
-	local HrulerLen = playWidth * 3
-
-	local MaxHeightTrace = util.QuickTrace(pos, Vector(0, 0, VrulerLen), ply)
-	local maxHeight = MaxHeightTrace.Fraction * VrulerLen
-
-	local TraceList = {}
-	for h = 18, maxHeight, 18 do
-		table.insert(
-			TraceList, 
-			util.QuickTrace(pos + Vector(0, 0, h), eyeDir * HrulerLen, ply)
-		)
-	end
-
-	local height = nil
-	for i = 1, #TraceList do
-		local tr1 = TraceList[i]
-		local tr2 = TraceList[i + 1]
-
-		if tr1.Fraction * HrulerLen > playWidth + BlockDis and (not tr2 or tr2.Fraction * HrulerLen > playWidth + BlockDis) then
-			-- 当水平距离大于一个身位时，大概就是障碍物高度
-			height = tr1.StartPos[3] - pos[3]
-			break
-		end
-	end
-
-	if height == nil then
-		return
-	end
-
-	-- 筛选最终落点
-	local pdmins, pdmaxs = ply:GetHullDuck()
-	pdmaxs[3] = pdmaxs[3] * 0.5
-	local temp = Vector(BlockTrace.HitPos)
-	temp[3] = pos[3] + height + pdmaxs[3]
-
-	local result = {}
-	for i = 0, 3 do
-		local startpos = temp + eyeDir * playWidth * 0.5
-		local endpos = startpos - Vector(0, 0, maxHeight)
-
-		local trace = util.TraceHull({
-			filter = ply, 
-			mask = MASK_PLAYERSOLID,
-			start = startpos,
-			endpos = endpos,
-			mins = pdmins,
-			maxs = pdmaxs,
-		})
-
-		table.insert(result, trace)
-	end
-
-	if #result == 0 then
-		return
-	else
-		return {
-			blockheight = height,
-			blockdis = BlockDis,
-			result = result,
-		}
-	end
-end
 
