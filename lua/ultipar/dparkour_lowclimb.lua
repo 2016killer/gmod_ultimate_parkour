@@ -101,16 +101,14 @@ action.Check = function(ply)
 	local plyWidth = math.max(bmaxs[1] - bmins[1], bmaxs[2] - bmins[2])
 	local plyHeight = bmaxs[3] - bmins[3]
 	
-	local lc_min = dp_lc_min:GetFloat()
-	local lc_max = dp_lc_max:GetFloat()
-	local lcv_wmax = dp_lcv_wmax:GetFloat()
-	local lcv_hmax = dp_lcv_hmax:GetFloat()
+	local lc_min = dp_lc_min:GetFloat() * plyHeight
+	local lc_max = dp_lc_max:GetFloat() * plyHeight
+	local lcv_wmax = dp_lcv_wmax:GetFloat() * plyWidth
+	local lcv_hmax = dp_lcv_hmax:GetFloat() * plyHeight
 
-	-- 把碰撞盒最低点抬到18单位, 主要是因为18一般是台阶的高度, 是能够走上去的
-	bmaxs[3] = bmins[3] + lc_min * plyHeight
-	bmins[3] = math.max(bmins[3], math.min(18, bmaxs[3]))
+	bmaxs[3] = lc_max
+	bmins[3] = lc_min
 	
-
 	-- 检测障碍
 	local BlockTrace = util.TraceHull({
 		filter = ply, 
@@ -146,7 +144,7 @@ action.Check = function(ply)
 	local dmins, dmaxs = ply:GetHullDuck()
 
 	-- 从碰撞点往前走半个身位看看有没有落脚点
-	local startpos = BlockTrace.HitPos + unitzvec * lc_max * plyHeight + eyeDir * plyWidth * 0.5
+	local startpos = BlockTrace.HitPos + unitzvec * lc_max + eyeDir * plyWidth * 0.5
 	local endpos = BlockTrace.HitPos + eyeDir * plyWidth * 0.5
 
 	local trace = util.TraceHull({
@@ -175,7 +173,7 @@ action.Check = function(ply)
 
 	-- 必须确保障碍高度在lc_min和lc_max之间, 一般低于最低值的情况应该是踩空了
 	local blockheight = trace.HitPos[3] - pos[3]
-	if blockheight > lc_max * plyHeight or blockheight < lc_min * plyHeight then
+	if blockheight > lc_max or blockheight < lc_min then
 		// print('高度不符合')
 		return
 	end
@@ -190,10 +188,10 @@ action.Check = function(ply)
 		-- 翻越不需要检查落脚点是否在斜坡上
 		-- lcv_hmax 新落脚点最大高度。
 		-- lcv_wmax 是最大翻越宽度
-		local maxVaultWidthVec = eyeDir * plyWidth * lcv_wmax
+		local maxVaultWidthVec = eyeDir * lcv_wmax
 
 		local simpletrace1 = util.QuickTrace(trace.HitPos + unitzvec * 2, maxVaultWidthVec, ply)
-		local simpletrace2 = util.QuickTrace(trace.HitPos + unitzvec * 0.25 * plyHeight, maxVaultWidthVec, ply)
+		local simpletrace2 = util.QuickTrace(trace.HitPos + unitzvec * dmaxs[3], maxVaultWidthVec, ply)
 
 		if simpletrace1.Hit or simpletrace2.Hit then
 			// print('阻挡')
@@ -219,7 +217,7 @@ action.Check = function(ply)
 		end
 
 		-- 确保落在凹陷的地方
-		if vchecktrace.HitPos[3] - pos[3] > lcv_hmax * plyHeight then
+		if vchecktrace.HitPos[3] - pos[3] > lcv_hmax then
 			// print('翻越高度不符合')
 			return {trace, false}
 		end
@@ -239,7 +237,7 @@ action.Check = function(ply)
 			maxs = dmaxs,
 		})
 
-		if hchecktrace.HitPos:Distance2D(trace.HitPos) > lcv_wmax * plyWidth then
+		if hchecktrace.HitPos:Distance2DSqr(trace.HitPos) > lcv_wmax * lcv_wmax then
 			// print('翻越宽度不符合')
 			return {trace, false}
 		end
@@ -259,19 +257,17 @@ action.CheckEnd = 0.5
 
 action.Play = function(ply, data)
 	local trace, dovault = unpack(data)
-
 	UltiPar.StartEasyMove(ply, trace.HitPos, 0.5)
 end
 
 
 action.Effects = action.Effects or {}
 
-
+-- 视图震动特效
+local vault_punch_vel = 0
+local vault_punch_offset = 0
+local vault_punch = false
 if CLIENT then
-	-- 视图震动特效
-	local vault_punch_vel = 0
-	local vault_punch_offset = 0
-	local vault_punch = false
 	hook.Add('CalcView', 'dparkour_vault', function(ply, pos, angles, fov)
 		local dt = FrameTime()
 		local acc = -(vault_punch_offset * 50 + 10 * vault_punch_vel)
@@ -298,18 +294,21 @@ end
 
 action.Effects['VManip-白狼'] = {
 	label = '#dp.VManipBaiLang',
-	func = nil,
+	func = VManipBaiLang,
 }
 
 action.Effects['VManip-mtbNTB'] = {
 	label = '#dp.VManipMtbNTB',
-	func = nil,
+	func = VManipBaiLang,
 }
 
 action.Effects['VManip-datae'] = {
 	label = '#dp.VManipdatae',
-	func = nil,
+	func = VManipBaiLang,
 }
+
+
+action.Effects['default'] = action.Effects['VManip-mtbNTB']
 
 
 
@@ -352,6 +351,10 @@ if CLIENT then
 		ply.dp_runtrigger = false
 	end)
 
+	hook.Add('ShouldDisableLegs', 'dparkour.gmodleg', function()
+		return VMLegs:IsActive()
+	end)
+
 elseif SERVER then
 	local triggertime = 0
 	hook.Add('PlayerPostThink', 'dparkour.lowclimb.trigger', function(ply)
@@ -390,6 +393,3 @@ elseif SERVER then
 end
 
 
-hook.Add('ShouldDisableLegs', 'dparkour.gmodleg', function()
-	return VMLegs:IsActive()
-end)

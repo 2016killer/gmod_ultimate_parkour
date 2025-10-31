@@ -15,6 +15,40 @@ local function GetAction(target)
 	end
 end
 
+local function LoadEffectFromDisk()
+	-- 从磁盘加载特效
+	if SERVER then
+		local content = file.Read(
+			'ultipar/effect_config_default.json', 
+			'LUA'
+		)
+
+		if content == nil then
+			-- 特效配置文件不存在
+			ErrorNoHalt(string.format('UltiPar.LoadEffectFromDisk() - file "ultipar/effect_config_default.json" not found\n'))
+			return {}
+		else
+			local default_config = util.JSONToTable(content)
+			if istable(default_config) then
+				return default_config
+			else
+				-- 文件内容损坏
+				ErrorNoHalt(string.format('UltiPar.LoadEffectFromDisk() - file "ultipar/effect_config_default.json" content is not valid json\n'))
+				return {}
+			end
+		end
+	elseif CLIENT then
+		
+	end
+end
+
+local function GetEffect(ply, action)
+	-- 获取特效, 返回特效表和特效名, 带有存在性检查
+	if SERVER then
+		return action.Effects[ply.ultipar_effect_config[action.Name] or 'default']
+	end
+end
+
 local function Register(name, action)
 	-- 注册动作, 返回动作表和是否已存在
 	local result, exist
@@ -76,24 +110,22 @@ local function Trigger(ply, target)
 				action.Play(ply, checkresult)
 
 				-- 执行特效
-				// local view = action.Views[ply.ultipar_effect[actionName]]
-				// if istable(view) and isfunction(view.func) then
-				// 	view.func(ply, checkresult)
-				// end
-				// ply.ultipar_views = nil
-				// if isfunction(action.Views[]) then
-				// 	action.End(ply, checkresult)
-				// end
-
+				local effect = GetEffect(ply, action)
+				if istable(effect) and isfunction(effect.func) then
+					effect.func(ply, checkresult)
+				end
 			elseif CLIENT then
-				 
-
+				net.Start('UltiParPlay')
+					net.WriteString(actionName)
+					net.WriteTable(checkresult)
+				net.SendToServer()
 			end
 		end
 	end
 end
 
 UltiPar.GetAction = GetAction
+UltiPar.GetEffect = GetEffect
 UltiPar.Trigger = Trigger
 UltiPar.Register = Register
 
@@ -103,12 +135,30 @@ if SERVER then
 	util.AddNetworkString('UltiParPlay')
 
 	net.Receive('UltiParPlay', function(len, ply)
+		if ply.ultipar_playing then 
+			return 
+		end
+
 		local target = net.ReadString()
 		local checkresult = net.ReadTable()
 
 		local action, actionName = UltiPar.GetAction(target)
 		if isfunction(action.Play) then
+			local succ, err = pcall(hook.Run, 'UltiParStart', ply, actionName, checkresult)
+			if not succ then
+				ErrorNoHalt(string.format('UltiParStart hook error: %s\n', err))
+			end
 
+			-- 标记进行中的动作和结束条件, 如果结束条件是实数则使用定时结束, 如果是函数则使用函数结束
+			local checkend = action.CheckEnd
+			ply.ultipar_playing = actionName
+			ply.ultipar_end = {
+				isnumber(checkend) and CurTime() + checkend or checkend,
+				checkresult
+			}
+			
+			-- 执行动作
+			action.Play(ply, checkresult)
 		end
 	end)
 
@@ -208,12 +258,33 @@ if SERVER then
 	
 	hook.Add('PlayerInitialSpawn', 'ultipar.init', function(ply)
 		Clear(ply)
-		ply.ultipar_effect = {}
+		ply.ultipar_effect_config = {}
+
+		local default_config = util.JSONToTable(
+			file.Read(
+				'ultipar/effect_config_default.json', 
+				'LUA'
+			) or ''
+		)
+
+		ply.ultipar_effect_config = default_config or ply.ultipar_effect_config
 	end)
 
 	UltiPar.SetMoveControl = SetMoveControl
 	UltiPar.StartEasyMove = StartEasyMove
 elseif CLIENT then
+
+	hook.Add('PlayerInitialSpawn', 'ultipar.init', function(ply)
+
+		ply.ultipar_effect_config = {}
+		file.Exists('ultipar_effects.lua', 'DATA')
+		file.Find('ultipar/*.lua', 'LUA')
+		for _, action in pairs(UltiPar.Actions) do
+			ply.ultipar_effect_config[action.Name] = 'default'
+		end
+
+	end)
+
 	local MoveControl = UltiPar.MoveControl
 	local function SetMoveControl(_, enable, ClearMovement, RemoveKeys, AddKeys)
 		MoveControl.enable = enable
