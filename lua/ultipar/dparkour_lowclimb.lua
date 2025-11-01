@@ -11,27 +11,7 @@ local function XYNormal(v)
 	return v
 end
 
-local function debugwireframebox(pos, mins, maxs, lifetime, color, ignoreZ)
-	lifetime = lifetime or 1
-	color = color or Color(255,255,255)
-	ignoreZ = ignoreZ or false
-
-	local ref = mins + pos
-
-	local temp = maxs - mins
-	local axes = {Vector(0, 0, temp.z), Vector(0, temp.y, 0), Vector(temp.x, 0, 0)}
-
-	for i = 1, 3 do
-		for j = 0, 3 do
-			local pos1 = ref
-			if bit.band(j, 0x01) ~= 0 then pos1 = pos1 + axes[1] end
-			if bit.band(j, 0x02) ~= 0 then pos1 = pos1 + axes[2] end
-
-			debugoverlay.Line(pos1, pos1 + axes[3], lifetime, color, ignoreZ)
-		end
-		axes[i], axes[3] = axes[3], axes[i]
-	end
-end
+local debugwireframebox = UltiPar.debugwireframebox
 
 local unitzvec = Vector(0, 0, 1)
 
@@ -41,11 +21,11 @@ local dp_los_cos = CreateConVar('dp_los_cos', '0.64', { FCVAR_ARCHIVE, FCVAR_CLI
 
 local dp_lc_keymode = CreateConVar('dp_lc_keymode', '1', { FCVAR_ARCHIVE, FCVAR_CLIENTCMD_CAN_EXECUTE, FCVAR_NOTIFY, FCVAR_SERVER_CAN_EXECUTE })
 local dp_lc_per = CreateConVar('dp_lc_per', '0.2', { FCVAR_ARCHIVE, FCVAR_CLIENTCMD_CAN_EXECUTE, FCVAR_NOTIFY, FCVAR_SERVER_CAN_EXECUTE })
-local dp_lc_max = CreateConVar('dp_lc_max', '0.75', { FCVAR_ARCHIVE, FCVAR_CLIENTCMD_CAN_EXECUTE, FCVAR_NOTIFY, FCVAR_SERVER_CAN_EXECUTE })
+local dp_lc_max = CreateConVar('dp_lc_max', '0.85', { FCVAR_ARCHIVE, FCVAR_CLIENTCMD_CAN_EXECUTE, FCVAR_NOTIFY, FCVAR_SERVER_CAN_EXECUTE })
 local dp_lc_min = CreateConVar('dp_lc_min', '0.5', { FCVAR_ARCHIVE, FCVAR_CLIENTCMD_CAN_EXECUTE, FCVAR_NOTIFY, FCVAR_SERVER_CAN_EXECUTE })
-local dp_lcv_wmax = CreateConVar('dp_lcv_wmax', '2.5', { FCVAR_ARCHIVE, FCVAR_CLIENTCMD_CAN_EXECUTE, FCVAR_NOTIFY, FCVAR_SERVER_CAN_EXECUTE })
+local dp_lcv_wmax = CreateConVar('dp_lcv_wmax', '2', { FCVAR_ARCHIVE, FCVAR_CLIENTCMD_CAN_EXECUTE, FCVAR_NOTIFY, FCVAR_SERVER_CAN_EXECUTE })
 local dp_lcv_hmax = CreateConVar('dp_lcv_hmax', '0.3', { FCVAR_ARCHIVE, FCVAR_CLIENTCMD_CAN_EXECUTE, FCVAR_NOTIFY, FCVAR_SERVER_CAN_EXECUTE })
-local dp_lcv_smin = CreateConVar('dp_lcv_smin', '200', { FCVAR_ARCHIVE, FCVAR_CLIENTCMD_CAN_EXECUTE, FCVAR_NOTIFY, FCVAR_SERVER_CAN_EXECUTE })
+local dp_lc2v_h = CreateConVar('dp_lc2v_h', '0.6', { FCVAR_ARCHIVE, FCVAR_CLIENTCMD_CAN_EXECUTE, FCVAR_NOTIFY, FCVAR_SERVER_CAN_EXECUTE })
 
 local action, _ = UltiPar.Register('DParkour-LowClimb')
 if CLIENT then
@@ -61,33 +41,82 @@ if CLIENT then
 		panel:ControlHelp('#dp.los_cos.help')
 
 		panel:Help('#dp.lc.help')
-		
-		panel:NumSlider('#dp.lc_per', 'dp_lc_per', 0.2, 3600, 2)
+
+		panel:NumSlider('#dp.lc_per', 'dp_lc_per', 0.05, 3600, 2)
 
 		panel:CheckBox('#dp.lc_keymode', 'dp_lc_keymode')
 		panel:ControlHelp('#dp.lc_keymode.help')
 
 		panel:NumSlider('#dp.lc_max', 'dp_lc_max', 0, 1, 2)
+		panel:ControlHelp('#dp.lc_max.help')
 		panel:NumSlider('#dp.lc_min', 'dp_lc_min', 0, 1, 2)
 
 		panel:NumSlider('#dp.lcv_wmax', 'dp_lcv_wmax', 0, 3, 2)
+		panel:ControlHelp('#dp.lcv_wmax.help')
 		panel:NumSlider('#dp.lcv_hmax', 'dp_lcv_hmax', 0, 1, 2)
 		panel:ControlHelp('#dp.lcv_hmax.help')
-		panel:NumSlider('#dp.lcv_smin', 'dp_lcv_smin', 100, 300, 0)
+		panel:NumSlider('#dp.lc2v_h', 'dp_lc2v_h', 0, 1, 2)
+		panel:ControlHelp('#dp.lc2v_h.help')
 		
 		local default = panel:Button('#default', '')
 		default.DoClick = function()
 			LocalPlayer():ConCommand('dp_workmode 1')
 			LocalPlayer():ConCommand('dp_los_cos 0.64')
 			LocalPlayer():ConCommand('dp_lc_per 0.2')
-			LocalPlayer():ConCommand('dp_lc_max 0.75')
+			LocalPlayer():ConCommand('dp_lc_max 0.85')
 			LocalPlayer():ConCommand('dp_lc_min 0.5')
-			LocalPlayer():ConCommand('dp_lcv_wmax 2.5')
+			LocalPlayer():ConCommand('dp_lcv_wmax 2')
 			LocalPlayer():ConCommand('dp_lcv_hmax 0.3')
-			LocalPlayer():ConCommand('dp_lcv_smin 200')
+			LocalPlayer():ConCommand('dp_lcv_gain 0.1')
 		end
 	end
 end
+
+local function DPVault(ply, mv, cmd)
+	local movedata = ply.ultipar_move
+	local dt = CurTime() - movedata.starttime
+
+	mv:SetOrigin(
+		movedata.startpos + 
+		(0.5 * movedata.acc * dt * dt + movedata.startvel * dt) * movedata.dir
+	) 
+
+	// print(,movedata.duration)
+	
+	if dt >= movedata.duration then 
+		mv:SetOrigin(movedata.endpos)
+		ply:SetMoveType(MOVETYPE_WALK)
+		mv:SetVelocity(movedata.endvel * movedata.dir)
+		ply.ultipar_move = nil -- 移动结束, 清除移动数据
+		UltiPar.SetMoveControl(ply, false, false, 0, 0)
+	end
+end
+
+local function StartDPVault(ply, endpos, endvel)
+	ply:SetMoveType(MOVETYPE_NOCLIP)
+
+	local startvel = ply:GetVelocity():Length()
+	local dir = (endpos - ply:GetPos()):GetNormal()
+	local dis = (endpos - ply:GetPos()):Length()
+	local duration = 2 * dis / (endvel + startvel)
+	local acc = (endvel - startvel) / duration
+
+	ply.ultipar_move = {
+		Call = DPVault,
+		startpos = ply:GetPos(),
+		endpos = endpos,
+		duration = duration,
+		starttime = CurTime(),
+		startvel = startvel,
+		endvel = math.max(endvel, startvel),
+		acc = acc,
+		dir = dir,
+	}
+
+	UltiPar.SetMoveControl(ply, true, true, removekeys or IN_JUMP, addkeys or 0)
+end
+
+
 
 action.Check = function(ply)
 	if ply:GetMoveType() == MOVETYPE_NOCLIP or ply:InVehicle() or !ply:Alive() then 
@@ -103,13 +132,12 @@ action.Check = function(ply)
 	
 	local lc_min = dp_lc_min:GetFloat() * plyHeight
 	local lc_max = dp_lc_max:GetFloat() * plyHeight
-	local lcv_wmax = dp_lcv_wmax:GetFloat() * plyWidth
-	local lcv_hmax = dp_lcv_hmax:GetFloat() * plyHeight
 
+	-- 我们假设玩家的碰撞盒不是悬空的也就是bmins[3] = 0
 	bmaxs[3] = lc_max
 	bmins[3] = lc_min
-	
-	-- 检测障碍
+
+	-- 检测障碍, 这是主要是为了检查是否对准了障碍物
 	local BlockTrace = util.TraceHull({
 		filter = ply, 
 		mask = MASK_PLAYERSOLID,
@@ -173,6 +201,7 @@ action.Check = function(ply)
 
 	-- 必须确保障碍高度在lc_min和lc_max之间, 一般低于最低值的情况应该是踩空了
 	local blockheight = trace.HitPos[3] - pos[3]
+	// print(blockheight)
 	if blockheight > lc_max or blockheight < lc_min then
 		// print('高度不符合')
 		return
@@ -183,13 +212,19 @@ action.Check = function(ply)
 	debugwireframebox(trace.StartPos, dmins, dmaxs, 0.5, Color(0, 255, 255))
 	debugwireframebox(trace.HitPos, dmins, dmaxs, 0.5, Color(255, 255, 0))
 
-	-- OK, 如果按下了前向键的话, 再检测一下是否符合翻越条件
+	-- OK, 如果按下了前向键并且高度在可翻越的范围内, 再检测一下是否符合翻越条件
+	local lcv_wmax = dp_lcv_wmax:GetFloat() * plyWidth
+	local lcv_hmax = dp_lcv_hmax:GetFloat() * plyHeight
+	
+	trace.HitPos[3] = trace.HitPos[3] + 1
 	if ply:KeyDown(IN_FORWARD) then
 		-- 翻越不需要检查落脚点是否在斜坡上
-		-- lcv_hmax 新落脚点最大高度。
+	
+		-- lcv_hmax 新落脚点必须小于这个高度。
 		-- lcv_wmax 是最大翻越宽度
 		local maxVaultWidthVec = eyeDir * lcv_wmax
 
+		-- 简单检测一下是否会被阻挡
 		local simpletrace1 = util.QuickTrace(trace.HitPos + unitzvec * 2, maxVaultWidthVec, ply)
 		local simpletrace2 = util.QuickTrace(trace.HitPos + unitzvec * dmaxs[3], maxVaultWidthVec, ply)
 
@@ -239,15 +274,16 @@ action.Check = function(ply)
 
 		if hchecktrace.HitPos:Distance2DSqr(trace.HitPos) > lcv_wmax * lcv_wmax then
 			// print('翻越宽度不符合')
-			return {trace, false}
+			return {trace, false, blockheight}
 		end
 
 		debugoverlay.Line(hchecktrace.StartPos, hchecktrace.HitPos, 0.5, Color(0, 0, 0))
 		debugwireframebox(hchecktrace.HitPos, dmins, dmaxs, 0.5, Color(0, 0, 0))
 
-		return {hchecktrace, true}
+		hchecktrace.HitPos = hchecktrace.HitPos + eyeDir * math.min(5, hchecktrace.Fraction * lcv_wmax)
+
+		return {trace, hchecktrace}
 	else
-		trace.HitPos[3] = trace.HitPos[3] + 1
 		return {trace, false}
 	end
 
@@ -256,9 +292,22 @@ end
 action.CheckEnd = 0.5
 
 action.Play = function(ply, data)
+	if CLIENT then return end
 	local trace, dovault = unpack(data)
-	UltiPar.StartEasyMove(ply, trace.HitPos, 0.5)
+
+
+	if dovault then
+		local endvel = ply:GetJumpPower() * 0.5  + (ply:KeyDown(IN_SPEED) and ply:GetRunSpeed() or ply:GetWalkSpeed())
+		StartDPVault(ply, dovault.HitPos, endvel)
+
+		print(endvel)
+	else
+		UltiPar.StartEasyMove(ply, trace.HitPos, 0.3)
+	end
+	// UltiPar.StartUniformAccMove(ply, trace.HitPos, 100)
 end
+print(Entity(1):GetRunSpeed())
+
 
 
 

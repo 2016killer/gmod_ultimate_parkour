@@ -8,15 +8,24 @@
 local function LowClimbEffect(ply, data, handAnim, legsAnim, soundVault, soundLowClimb)
 	if data == nil then
 		-- 演示模式
+		UltiPar.SetVecPunchVel(Vector(50, 0, -10))
+		UltiPar.SetAngPunchVel(Vector(0, 0, -50))
 		VManip:PlayAnim(handAnim)
 		VMLegs:PlayAnim(legsAnim)
+		surface.PlaySound(soundVault)
 	else
 		local trace, dovault = unpack(data)
 		if dovault then
+			UltiPar.SetVecPunchVel(Vector(100, 0, -10))
+			UltiPar.SetAngPunchVel(Vector(0, 0, -150))
+
 			VManip:PlayAnim(handAnim)
 			VMLegs:PlayAnim(legsAnim)
 			surface.PlaySound(soundVault)
 		else
+			UltiPar.SetVecPunchVel(Vector(0, 0, 25))
+			UltiPar.SetAngPunchVel(Vector(0, 0, -100))
+
 			VManip:PlayAnim(handAnim)
 			surface.PlaySound(soundLowClimb)
 		end
@@ -62,7 +71,7 @@ UltiPar.RegisterEffect(
 	}
 )
 
-UltiPar.RegisterEffect(
+local effect, _ = UltiPar.RegisterEffect(
 	'DParkour-LowClimb', 
 	'default',
 	{
@@ -70,6 +79,9 @@ UltiPar.RegisterEffect(
 		func = VManip_mtbNTB,
 	}
 )
+effect.func = VManip_BaiLang
+
+
 
 hook.Add('ShouldDisableLegs', 'dparkour.gmodleg', function()
 	return VMLegs and VMLegs:IsActive()

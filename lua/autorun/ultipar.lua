@@ -65,7 +65,7 @@ local function Register(name, action)
 		result = action
 		exist = false
 	else
-		action = {Name = name}
+		action = {Name = name, Effects = {}}
 		ActionSet[name] = action
 
 		result = action
@@ -145,6 +145,11 @@ local function Trigger(ply, target)
 				if isfunction(effect.func) then
 					effect.func(ply, checkresult)
 				end
+
+				net.Start('UltiParPlay')
+					net.WriteString(actionName)
+					net.WriteTable(checkresult)
+				net.Send(ply)
 			elseif CLIENT then
 				net.Start('UltiParPlay')
 					net.WriteString(actionName)
@@ -155,13 +160,35 @@ local function Trigger(ply, target)
 	end
 end
 
+
+UltiPar.debugwireframebox = function(pos, mins, maxs, lifetime, color, ignoreZ)
+	lifetime = lifetime or 1
+	color = color or Color(255,255,255)
+	ignoreZ = ignoreZ or false
+
+	local ref = mins + pos
+
+	local temp = maxs - mins
+	local axes = {Vector(0, 0, temp.z), Vector(0, temp.y, 0), Vector(temp.x, 0, 0)}
+
+	for i = 1, 3 do
+		for j = 0, 3 do
+			local pos1 = ref
+			if bit.band(j, 0x01) ~= 0 then pos1 = pos1 + axes[1] end
+			if bit.band(j, 0x02) ~= 0 then pos1 = pos1 + axes[2] end
+
+			debugoverlay.Line(pos1, pos1 + axes[3], lifetime, color, ignoreZ)
+		end
+		axes[i], axes[3] = axes[3], axes[i]
+	end
+end
+
 UltiPar.GetAction = GetAction
 UltiPar.GetCurrentEffect = GetCurrentEffect
 UltiPar.GetEffect = GetEffect
 UltiPar.Trigger = Trigger
 UltiPar.Register = Register
 UltiPar.RegisterEffect = RegisterEffect
-
 
 if SERVER then
 	util.AddNetworkString('UltiParMoveControl')
@@ -224,20 +251,21 @@ if SERVER then
 	end
 
 	local function EasyMoveCall(ply, mv, cmd)
-		local dt = CurTime() - ply.ultipar_move.starttime
+		local movedata = ply.ultipar_move
+		local dt = CurTime() - movedata.starttime
 
 		mv:SetOrigin(
 			LerpVector(
-				dt / ply.ultipar_move.duration, 
-				ply.ultipar_move.startpos, 
-				ply.ultipar_move.endpos
+				dt / movedata.duration, 
+				movedata.startpos, 
+				movedata.endpos
 			)
 		) 
 
-		if dt >= ply.ultipar_move.duration then 
-			mv:SetOrigin(ply.ultipar_move.endpos)
+		if dt >= movedata.duration then 
+			mv:SetOrigin(movedata.endpos)
 			ply:SetMoveType(MOVETYPE_WALK)
-			mv:SetVelocity(ply.ultipar_move.startvel)
+			mv:SetVelocity(movedata.startvel)
 			ply.ultipar_move = nil -- 移动结束, 清除移动数据
 			SetMoveControl(ply, false, false, 0, 0)
 		end
@@ -265,7 +293,9 @@ if SERVER then
 
 		if isfunction(call) then
 			call(ply, mv, cmd)
-		else
+		else	
+			-- 异常处理, 清除移动数据
+			SetMoveControl(ply, false, false, 0, 0)
 			ply.ultipar_move = nil
 		end
 
@@ -302,6 +332,8 @@ if SERVER then
 		ply.ultipar_playing = nil
 		ply.ultipar_move = nil
 		ply.ultipar_end = nil
+		
+		UltiPar.SetMoveControl(ply, false, false, 0, 0)
 	end
 
 	hook.Add('PlayerDeath', 'ultipar.clear', Clear)
@@ -315,7 +347,33 @@ if SERVER then
 
 	UltiPar.SetMoveControl = SetMoveControl
 	UltiPar.StartEasyMove = StartEasyMove
+	
+	concommand.Add('up_clear', Clear)
+
 elseif CLIENT then
+	net.Receive('UltiParPlay', function(len, ply)
+		local target = net.ReadString()
+		local checkresult = net.ReadTable()
+
+		ply = LocalPlayer()
+		local action, actionName = UltiPar.GetAction(target)
+		if isfunction(action.Play) then	
+			local succ, err = pcall(action.Play, ply, checkresult)
+			if not succ then
+				ErrorNoHalt(string.format('UltiParPlay action.Play error: %s\n', err))
+			end
+
+			-- 执行特效
+			local effect = GetCurrentEffect(ply, action)
+			if isfunction(effect.func) then
+				local succ, err = pcall(effect.func, ply, checkresult)
+				if not succ then
+					ErrorNoHalt(string.format('UltiParPlay effect %s error: %s\n', effect.label, err))
+				end
+			end
+		end
+	end)
+
 	local function LoadEffectFromDisk(path)
 		-- 从磁盘加载动作的特效配置
 		path = path or 'ultipar_effect_config.json'
@@ -434,24 +492,54 @@ elseif CLIENT then
 		local view = GAMEMODE:CalcView(ply, pos, angles, fov) 
 		local eyeAngles = view.angles - ply:GetViewPunchAngles()
 
-		view.origin = view.origin + eyeAngles:Forward() * vault_punch_offset.x +
-			eyeAngles:Right() * vault_punch_offset.y +
-			eyeAngles:Up() * vault_punch_offset.z
+		view.origin = view.origin + eyeAngles:Forward() * vecpunch_offset.x +
+			eyeAngles:Right() * vecpunch_offset.y +
+			eyeAngles:Up() * vecpunch_offset.z
 
-		view.angles = eyeAngles + angpunch_offset
-		
+		view.angles = view.angles + Angle(angpunch_offset.x, angpunch_offset.y, angpunch_offset.z)
+
+		local vecoffsetLen = vecpunch_offset:LengthSqr()
+		local angoffsetLen = angpunch_offset:LengthSqr()
+		local vecvelLen = vecpunch_vel:LengthSqr()
+		local angvelLen = angpunch_vel:LengthSqr()
+
+		if vecoffsetLen < 0.1 and vecvelLen < 0.1 and angoffsetLen < 0.1 and angvelLen < 0.1 then
+			vecpunch_offset = Vector()
+			vecpunch_vel = Vector()
+
+			angpunch_offset = Vector()
+			angpunch_vel = Vector()
+
+			punch = false
+		end
+
 		return view
 	end)
 
 	UltiPar.SetVecPunchOffset = function(vec)
+		punch = true
 		vecpunch_offset = vec
 	end
 
-	UltiPar.SetAngPunchOffset = function(ang)
+	UltiPar.SetAngPunchOffset = function(vec)
+		punch = true
 		angpunch_offset = ang
 	end
 
+	UltiPar.SetVecPunchVel = function(vec)
+		punch = true
+		vecpunch_vel = vec
+	end
 
+	UltiPar.SetAngPunchVel = function(vec)
+		punch = true
+		angpunch_vel = vec
+	end
+
+	UltiPar.GetVecPunchOffset = function() return vecpunch_offset end
+	UltiPar.GetAngPunchOffset = function() return angpunch_offset end
+	UltiPar.GetVecPunchVel = function() return vecpunch_vel end
+	UltiPar.GetAngPunchVel = function() return angpunch_vel end
 
 	UltiPar.SetMoveControl = SetMoveControl
 	UltiPar.LoadEffectFromDisk = LoadEffectFromDisk
