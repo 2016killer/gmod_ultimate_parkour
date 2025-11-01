@@ -325,6 +325,10 @@ if SERVER then
 			flag = CurTime() > checkend	
 		elseif isfunction(checkend) then
 			flag = checkend(ply, checkresult)
+		else
+			-- 针对无进行态的动作, 直接清除不向客户端发送结束消息
+			ply.ultipar_playing = nil
+			return
 		end
 
 		if flag then
