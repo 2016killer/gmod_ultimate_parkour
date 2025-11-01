@@ -193,6 +193,7 @@ UltiPar.RegisterEffect = RegisterEffect
 if SERVER then
 	util.AddNetworkString('UltiParMoveControl')
 	util.AddNetworkString('UltiParPlay')
+	util.AddNetworkString('UltiParEnd')
 	util.AddNetworkString('UltiParEffectConfig')
 	util.AddNetworkString('UltiParEffectTest')
 
@@ -332,6 +333,19 @@ if SERVER then
 				ErrorNoHalt(string.format('UltiParEnd hook error: %s\n', err))
 			end
 			
+			net.Start('UltiParEnd')
+				net.WriteString(ply.ultipar_playing)
+				net.WriteTable(checkresult)
+			net.Send(ply)
+
+			local action, actionName = UltiPar.GetAction(ply.ultipar_playing)
+			if isfunction(action.Clear) then
+				local succ, err = pcall(action.Clear, ply, checkresult)
+				if not succ then
+					ErrorNoHalt(string.format('UltiParEnd action.Clear error: %s\n', err))
+				end
+			end
+
 			ply.ultipar_playing = nil
 			ply.ultipar_end = nil
 		end
@@ -380,6 +394,20 @@ elseif CLIENT then
 				if not succ then
 					ErrorNoHalt(string.format('UltiParPlay effect %s error: %s\n', effect.label, err))
 				end
+			end
+		end
+	end)
+
+	net.Receive('UltiParEnd', function(len, ply)
+		local target = net.ReadString()
+		local checkresult = net.ReadTable()
+
+		ply = LocalPlayer()
+		local action, actionName = UltiPar.GetAction(target)
+		if isfunction(action.Clear) then	
+			local succ, err = pcall(action.Clear, ply, checkresult)
+			if not succ then
+				ErrorNoHalt(string.format('UltiParEnd action.Clear error: %s\n', err))
 			end
 		end
 	end)
