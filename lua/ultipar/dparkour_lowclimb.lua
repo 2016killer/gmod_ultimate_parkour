@@ -306,7 +306,6 @@ action.Play = function(ply, data)
 	end
 	// UltiPar.StartUniformAccMove(ply, trace.HitPos, 100)
 end
-print(Entity(1):GetRunSpeed())
 
 
 
