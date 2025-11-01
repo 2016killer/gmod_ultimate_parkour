@@ -261,57 +261,6 @@ action.Play = function(ply, data)
 end
 
 
-action.Effects = action.Effects or {}
-
--- 视图震动特效
-local vault_punch_vel = 0
-local vault_punch_offset = 0
-local vault_punch = false
-if CLIENT then
-	hook.Add('CalcView', 'dparkour_vault', function(ply, pos, angles, fov)
-		local dt = FrameTime()
-		local acc = -(vault_punch_offset * 50 + 10 * vault_punch_vel)
-		vault_punch_offset = vault_punch_offset + vault_punch_vel * dt 
-		vault_punch_vel = vault_punch_vel + acc * dt	
-
-		local view = GAMEMODE:CalcView(ply, pos, angles, fov) 
-		view.origin = view.origin + vault_punch_offset * Vector((view.angles - ply:GetViewPunchAngles()):Forward())
-		return view
-	end)
-end
-
-
-local function VManipBaiLang(ply, data)
-	if CLIENT then
-		vault_punch = true
-		vault_punch_vel = 50
-		VManip:PlayAnim('longvault1')
-		VMLegs:PlayAnim('lazyvaultnew')
-	else
-		ply:ViewPunch(Angle(0, 0, 50))
-	end
-end
-
-action.Effects['VManip-白狼'] = {
-	label = '#dp.VManipBaiLang',
-	func = VManipBaiLang,
-}
-
-action.Effects['VManip-mtbNTB'] = {
-	label = '#dp.VManipMtbNTB',
-	func = VManipBaiLang,
-}
-
-action.Effects['VManip-datae'] = {
-	label = '#dp.VManipdatae',
-	func = VManipBaiLang,
-}
-
-
-action.Effects['default'] = action.Effects['VManip-mtbNTB']
-
-
-
 
 if CLIENT then
 	local triggertime = 0
@@ -350,11 +299,7 @@ if CLIENT then
 	concommand.Add('-dp_lowclimb_cl', function(ply)
 		ply.dp_runtrigger = false
 	end)
-
-	hook.Add('ShouldDisableLegs', 'dparkour.gmodleg', function()
-		return VMLegs:IsActive()
-	end)
-
+	
 elseif SERVER then
 	local triggertime = 0
 	hook.Add('PlayerPostThink', 'dparkour.lowclimb.trigger', function(ply)

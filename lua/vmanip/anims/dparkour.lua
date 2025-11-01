@@ -1,19 +1,16 @@
 AddCSLuaFile()
 
-VManip:RegisterAnim("dp_vault",
-    {
-        ["model"]="weapons/c_vmanipdh2p.mdl",
-        ["lerp_peak"]=0.4,
-        ["lerp_speed_in"]=1,
-        ["lerp_speed_out"]=0.8,
-        ["lerp_curve"]=0.5,
-        ["speed"]=3
-    }
-)
+local author = 'mtbNTB'
+local handModel = string.format('weapons/dp_hand_%s.mdl', author)
+local legsModel = string.format('dp_legs_%s.mdl', author)
 
-VManip:RegisterAnim("dp_catch",
+local animname = function(str)
+    return string.format('dp_%s_%s', str, author)
+end
+
+VManip:RegisterAnim(animname('catch'),
     {
-        ["model"]="weapons/c_vmanipdh2p.mdl",
+        ["model"]=handModel,
         ["lerp_peak"]=1,
         ["lerp_speed_in"]=12,
         ["lerp_speed_out"]=12,
@@ -23,9 +20,9 @@ VManip:RegisterAnim("dp_catch",
 )
 
 
-VMLegs:RegisterAnim("dp_lazyvault", 
+VMLegs:RegisterAnim(animname('lazy'), 
     {
-        ["model"]="c_vmaniplegsdh2p.mdl",
+        ["model"]=legsModel,
         ["speed"]=1.5,
         ["forwardboost"]=2,
         ["upwardboost"]=-5
@@ -33,12 +30,55 @@ VMLegs:RegisterAnim("dp_lazyvault",
 )
 
 
-VMLegs:RegisterAnim("dp_monkeyvault", 
+VMLegs:RegisterAnim(animname('monkey'), 
     {
-        ["model"]="c_vmaniplegsdh2p.mdl",
+        ["model"]=legsModel,
         ["speed"]=1.2,
         ["forwardboost"]=-10,
         ["upwardboost"]=-5
     }
 )
 
+author = 'BaiLang'
+handModel = string.format('weapons/dp_hand_%s.mdl', author)
+legsModel = string.format('dp_legs_%s.mdl', author)
+animname = function(str)
+    return string.format('dp_%s_%s', str, author)
+end
+
+VManip:RegisterAnim(animname('catch'),
+    {
+        ["model"]=handModel,
+        ["lerp_peak"]=1,
+        ["lerp_speed_in"]=12,
+        ["lerp_speed_out"]=12,
+        ["lerp_curve"]=1,
+        ["speed"]=2
+    }
+)
+
+
+VMLegs:RegisterAnim(animname('lazy'), 
+    {
+        ["model"]=legsModel,
+        ["speed"]=1.5,
+        ["forwardboost"]=2,
+        ["upwardboost"]=-5
+    }
+)
+
+
+VMLegs:RegisterAnim(animname('monkey'), 
+    {
+        ["model"]=legsModel,
+        ["speed"]=1.2,
+        ["forwardboost"]=-10,
+        ["upwardboost"]=-5
+    }
+)
+
+
+author = nil
+handModel = nil
+legsModel = nil
+animname = nil
