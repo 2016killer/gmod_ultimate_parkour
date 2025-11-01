@@ -233,6 +233,17 @@ if SERVER then
 			
 			-- 执行动作
 			action.Play(ply, checkresult)
+
+			-- 执行特效
+			local effect = GetCurrentEffect(ply, action)
+			if isfunction(effect.func) then
+				effect.func(ply, checkresult)
+			end
+
+			net.Start('UltiParPlay')
+				net.WriteString(actionName)
+				net.WriteTable(checkresult)
+			net.Send(ply)
 		end
 	end)
 
@@ -326,7 +337,6 @@ if SERVER then
 		end
 
 	end)
-
 
 	local function Clear(ply)
 		ply.ultipar_playing = nil

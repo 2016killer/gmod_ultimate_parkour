@@ -25,7 +25,7 @@ local dp_lc_max = CreateConVar('dp_lc_max', '0.85', { FCVAR_ARCHIVE, FCVAR_CLIEN
 local dp_lc_min = CreateConVar('dp_lc_min', '0.5', { FCVAR_ARCHIVE, FCVAR_CLIENTCMD_CAN_EXECUTE, FCVAR_NOTIFY, FCVAR_SERVER_CAN_EXECUTE })
 local dp_lcv_wmax = CreateConVar('dp_lcv_wmax', '2', { FCVAR_ARCHIVE, FCVAR_CLIENTCMD_CAN_EXECUTE, FCVAR_NOTIFY, FCVAR_SERVER_CAN_EXECUTE })
 local dp_lcv_hmax = CreateConVar('dp_lcv_hmax', '0.3', { FCVAR_ARCHIVE, FCVAR_CLIENTCMD_CAN_EXECUTE, FCVAR_NOTIFY, FCVAR_SERVER_CAN_EXECUTE })
-local dp_lc2v_h = CreateConVar('dp_lc2v_h', '0.6', { FCVAR_ARCHIVE, FCVAR_CLIENTCMD_CAN_EXECUTE, FCVAR_NOTIFY, FCVAR_SERVER_CAN_EXECUTE })
+local dp_lcdv_h = CreateConVar('dp_lcdv_h', '0.8', { FCVAR_ARCHIVE, FCVAR_CLIENTCMD_CAN_EXECUTE, FCVAR_NOTIFY, FCVAR_SERVER_CAN_EXECUTE })
 
 local action, _ = UltiPar.Register('DParkour-LowClimb')
 if CLIENT then
@@ -55,8 +55,8 @@ if CLIENT then
 		panel:ControlHelp('#dp.lcv_wmax.help')
 		panel:NumSlider('#dp.lcv_hmax', 'dp_lcv_hmax', 0, 1, 2)
 		panel:ControlHelp('#dp.lcv_hmax.help')
-		panel:NumSlider('#dp.lc2v_h', 'dp_lc2v_h', 0, 1, 2)
-		panel:ControlHelp('#dp.lc2v_h.help')
+		panel:NumSlider('#dp.lcdv_h', 'dp_lcdv_h', 0, 1, 2)
+		panel:ControlHelp('#dp.lcdv_h.help')
 		
 		local default = panel:Button('#default', '')
 		default.DoClick = function()
@@ -67,56 +67,10 @@ if CLIENT then
 			LocalPlayer():ConCommand('dp_lc_min 0.5')
 			LocalPlayer():ConCommand('dp_lcv_wmax 2')
 			LocalPlayer():ConCommand('dp_lcv_hmax 0.3')
-			LocalPlayer():ConCommand('dp_lcv_gain 0.1')
+			LocalPlayer():ConCommand('dp_lcdv_h 0.8')
 		end
 	end
 end
-
-local function DPVault(ply, mv, cmd)
-	local movedata = ply.ultipar_move
-	local dt = CurTime() - movedata.starttime
-
-	mv:SetOrigin(
-		movedata.startpos + 
-		(0.5 * movedata.acc * dt * dt + movedata.startvel * dt) * movedata.dir
-	) 
-
-	// print(,movedata.duration)
-	
-	if dt >= movedata.duration then 
-		mv:SetOrigin(movedata.endpos)
-		ply:SetMoveType(MOVETYPE_WALK)
-		mv:SetVelocity(movedata.endvel * movedata.dir)
-		ply.ultipar_move = nil -- 移动结束, 清除移动数据
-		UltiPar.SetMoveControl(ply, false, false, 0, 0)
-	end
-end
-
-local function StartDPVault(ply, endpos, endvel)
-	ply:SetMoveType(MOVETYPE_NOCLIP)
-
-	local startvel = ply:GetVelocity():Length()
-	local dir = (endpos - ply:GetPos()):GetNormal()
-	local dis = (endpos - ply:GetPos()):Length()
-	local duration = 2 * dis / (endvel + startvel)
-	local acc = (endvel - startvel) / duration
-
-	ply.ultipar_move = {
-		Call = DPVault,
-		startpos = ply:GetPos(),
-		endpos = endpos,
-		duration = duration,
-		starttime = CurTime(),
-		startvel = startvel,
-		endvel = math.max(endvel, startvel),
-		acc = acc,
-		dir = dir,
-	}
-
-	UltiPar.SetMoveControl(ply, true, true, removekeys or IN_JUMP, addkeys or 0)
-end
-
-
 
 action.Check = function(ply)
 	if ply:GetMoveType() == MOVETYPE_NOCLIP or ply:InVehicle() or !ply:Alive() then 
@@ -230,7 +184,7 @@ action.Check = function(ply)
 
 		if simpletrace1.Hit or simpletrace2.Hit then
 			// print('阻挡')
-			return {trace, false}
+			return {trace, false, blockheight}
 		end
 
 		-- 检查凹陷是否符合条件 
@@ -248,13 +202,13 @@ action.Check = function(ply)
 
 		if vchecktrace.StartSolid then
 			// print('翻越高度检测, 卡住了')
-			return {trace, false}
+			return {trace, false, blockheight}
 		end
 
 		-- 确保落在凹陷的地方
 		if vchecktrace.HitPos[3] - pos[3] > lcv_hmax then
 			// print('翻越高度不符合')
-			return {trace, false}
+			return {trace, false, blockheight}
 		end
 
 		debugoverlay.Line(vchecktrace.StartPos, vchecktrace.HitPos, 0.5, Color(0, 0, 255))
@@ -282,29 +236,200 @@ action.Check = function(ply)
 
 		hchecktrace.HitPos = hchecktrace.HitPos + eyeDir * math.min(5, hchecktrace.Fraction * lcv_wmax)
 
-		return {trace, hchecktrace}
+		return {trace, hchecktrace, blockheight}
 	else
-		return {trace, false}
+		return {trace, false, blockheight}
 	end
 
 end
 
 action.CheckEnd = 0.5
 
+local function DPVault(ply, mv, cmd)
+	local movedata = ply.ultipar_move
+	local dt = CurTime() - movedata.starttime
+
+	mv:SetOrigin(
+		movedata.startpos + 
+		(0.5 * movedata.acc * dt * dt + movedata.startvel * dt) * movedata.dir +
+		(0.5 * -200 / movedata.duration * dt * dt + 100 * dt) * unitzvec
+	) 
+
+	// print(,movedata.duration)
+	
+	if dt >= movedata.duration then 
+		mv:SetOrigin(movedata.endpos)
+		ply:SetMoveType(MOVETYPE_WALK)
+		mv:SetVelocity(movedata.endvel * movedata.dir)
+		ply.ultipar_move = nil -- 移动结束, 清除移动数据
+		UltiPar.SetMoveControl(ply, false, false, 0, 0)
+	end
+end
+
+local function StartDPVault(ply, endpos, endvel)
+	ply:SetMoveType(MOVETYPE_NOCLIP)
+
+	local startvel = ply:GetVelocity():Length()
+	local dir = (endpos - ply:GetPos()):GetNormal()
+	local dis = (endpos - ply:GetPos()):Length()
+	local duration = 2 * dis / (endvel + startvel)
+	local acc = (endvel - startvel) / duration
+
+	ply.ultipar_move = {
+		Call = DPVault,
+		startpos = ply:GetPos(),
+		endpos = endpos,
+		duration = duration,
+		starttime = CurTime(),
+		startvel = startvel,
+		endvel = math.max(endvel, startvel),
+		acc = acc,
+		dir = dir,
+	}
+
+	UltiPar.SetMoveControl(ply, true, true, removekeys or IN_JUMP, addkeys or 0)
+end
+
+local function DPUpWall(ply, mv, cmd)
+	local movedata = ply.ultipar_move
+	local dt = CurTime() - movedata.starttime
+
+	mv:SetOrigin(
+		movedata.startpos + 
+		(0.5 * movedata.acc * dt * dt + movedata.startvel * dt) * movedata.dir
+	) 
+
+	if dt >= movedata.duration then 
+		mv:SetOrigin(movedata.endpos)
+		ply:SetMoveType(MOVETYPE_WALK)
+		ply.ultipar_move = nil -- 移动结束, 清除移动数据
+		UltiPar.SetMoveControl(ply, false, false, 0, 0)
+	end
+end
+
+local function StartDPUpWall(ply, endpos, startvel)
+	ply:SetMoveType(MOVETYPE_NOCLIP)
+
+	local dir = (endpos - ply:GetPos()):GetNormal()
+	local dis = (endpos - ply:GetPos()):Length()
+	local duration = 2 * dis / startvel
+	local acc = -startvel / duration
+
+	ply.ultipar_move = {
+		Call = DPUpWall,
+		startpos = ply:GetPos(),
+		endpos = endpos,
+		duration = duration,
+		starttime = CurTime(),
+		startvel = startvel,
+		acc = acc,
+		dir = dir,
+	}
+
+	UltiPar.SetMoveControl(ply, true, true, removekeys or IN_JUMP, addkeys or 0)
+end
+
+
+local function DPDoubleVault(ply, mv, cmd)
+	local movedata = ply.ultipar_move
+	local dt = CurTime() - movedata.starttime
+
+	if dt < movedata.duration then 
+		mv:SetOrigin(
+			movedata.startpos + 
+			(0.5 * movedata.acc * dt * dt + movedata.startvel * dt) * movedata.dir
+		) 
+	elseif dt < movedata.duration + movedata.duration2 then
+		dt = dt - movedata.duration
+		mv:SetOrigin(
+			movedata.endpos + 
+			(0.5 * movedata.acc2 * dt * dt + movedata.startvel2 * dt) * movedata.dir2 +
+			(0.5 * -200 / movedata.duration2 * dt * dt + 100 * dt) * unitzvec
+		) 
+	else
+		mv:SetOrigin(movedata.endpos2)
+		ply:SetMoveType(MOVETYPE_WALK)
+		mv:SetVelocity(movedata.endvel2 * movedata.dir2)
+		ply.ultipar_move = nil -- 移动结束, 清除移动数据
+		UltiPar.SetMoveControl(ply, false, false, 0, 0)
+	end
+end
+
+local function StartDPDoubleVault(ply, endpos, endpos2, startvel, endvel2)
+	ply:SetMoveType(MOVETYPE_NOCLIP)
+
+	local plyvel = ply:GetVelocity():Length()
+	endvel2 = math.max(endvel2, plyvel)
+	startvel = math.max(startvel, plyvel)
+
+	endvel2 = math.max(endvel2, startvel)
+
+	local endvel = startvel * 0.5
+	local dir = (endpos - ply:GetPos()):GetNormal()
+	local dis = (endpos - ply:GetPos()):Length()
+	local duration = 2 * dis / (endvel + startvel)
+	local acc = (endvel - startvel) / duration
+
+	local startvel2 = endvel
+	local dir2 = (endpos2 - endpos):GetNormal()
+	local dis2 = (endpos2 - endpos):Length()
+	local duration2 = 2 * dis2 / (endvel2 + startvel2)
+	local acc2 = (endvel2 - startvel2) / duration2
+
+	ply.ultipar_move = {
+		Call = DPDoubleVault,
+		startpos = ply:GetPos(),
+		starttime = CurTime(),
+		endpos = endpos,
+		endpos2 = endpos2,
+		duration = duration,
+		duration2 = duration2,
+		endvel = endvel,
+		endvel2 = endvel2 * 0.9,
+		startvel = startvel,
+		startvel2 = startvel2,
+		acc = acc,
+		acc2 = acc2,
+		dir = dir,
+		dir2 = dir2,
+	}
+
+	UltiPar.SetMoveControl(ply, true, true, removekeys or IN_JUMP, addkeys or 0)
+end
+
+UltiPar.StartDPVault = StartDPVault
+UltiPar.StartDPUpWall = StartDPUpWall
+UltiPar.StartDPDoubleVault = StartDPDoubleVault
+
 action.Play = function(ply, data)
 	if CLIENT then return end
-	local trace, dovault = unpack(data)
+	local trace, dovault, blockheight = unpack(data)
 
+	// UltiPar.StartEasyMove(ply, trace.HitPos, 0.3)
 
 	if dovault then
-		local endvel = ply:GetJumpPower() * 0.5  + (ply:KeyDown(IN_SPEED) and ply:GetRunSpeed() or ply:GetWalkSpeed())
-		StartDPVault(ply, dovault.HitPos, endvel)
-
-		print(endvel)
+		-- 触发二段翻越时, 首先触发低爬直到障碍高度为最小高度
+		-- 整体节奏是以初始速度低爬衰减到0.5倍, 再加速翻越, 最终速度将是0.9倍
+		
+		local endvel = ply:GetJumpPower() + (ply:KeyDown(IN_SPEED) and ply:GetRunSpeed() or ply:GetWalkSpeed())
+		local pmins, pmaxs = ply:GetCollisionBounds()
+		local plyHeight = pmaxs[3] - pmins[3]
+		if blockheight > dp_lcdv_h:GetFloat() * plyHeight then
+			local startvel = ply:GetJumpPower() + 0.25 * (ply:KeyDown(IN_SPEED) and ply:GetRunSpeed() or ply:GetWalkSpeed())
+			local endvel2 = endvel
+			StartDPDoubleVault(
+				ply, 
+				trace.HitPos - dp_lc_min:GetFloat() * plyHeight * unitzvec, dovault.HitPos, 
+				startvel, 
+				endvel2
+			)
+		else
+			StartDPVault(ply, dovault.HitPos, endvel)
+		end
 	else
-		UltiPar.StartEasyMove(ply, trace.HitPos, 0.3)
+		local startvel = ply:GetJumpPower() + 0.25 * (ply:KeyDown(IN_SPEED) and ply:GetRunSpeed() or ply:GetWalkSpeed())
+		StartDPUpWall(ply, trace.HitPos, startvel)
 	end
-	// UltiPar.StartUniformAccMove(ply, trace.HitPos, 100)
 end
 
 

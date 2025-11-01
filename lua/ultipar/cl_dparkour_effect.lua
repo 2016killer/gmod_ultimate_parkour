@@ -3,7 +3,7 @@
 主页:https://steamcommunity.com/id/whitewolfking/
 此文件为其修改版本。
 ]]--
-
+local dp_lcdv_h = CreateConVar('dp_lcdv_h', '0.8', { FCVAR_ARCHIVE, FCVAR_CLIENTCMD_CAN_EXECUTE, FCVAR_NOTIFY, FCVAR_SERVER_CAN_EXECUTE })
 
 local function LowClimbEffect(ply, data, handAnim, legsAnim, soundVault, soundLowClimb)
 	if data == nil then
@@ -14,14 +14,39 @@ local function LowClimbEffect(ply, data, handAnim, legsAnim, soundVault, soundLo
 		VMLegs:PlayAnim(legsAnim)
 		surface.PlaySound(soundVault)
 	else
-		local trace, dovault = unpack(data)
+		local trace, dovault, blockheight = unpack(data)
 		if dovault then
-			UltiPar.SetVecPunchVel(Vector(100, 0, -10))
-			UltiPar.SetAngPunchVel(Vector(0, 0, -150))
+			local pmins, pmaxs = ply:GetCollisionBounds()
+			if blockheight > dp_lcdv_h:GetFloat() * (pmaxs[3] - pmins[3]) then
+				local startvel = ply:GetJumpPower() + 0.25 * (ply:KeyDown(IN_SPEED) and ply:GetRunSpeed() or ply:GetWalkSpeed())
+				// print(startvel, ply:GetVelocity():Length())
+				startvel = math.max(startvel, ply:GetVelocity():Length())
 
-			VManip:PlayAnim(handAnim)
-			VMLegs:PlayAnim(legsAnim)
-			surface.PlaySound(soundVault)
+				local duration = (ply:GetPos() - trace.HitPos):Length() / (1.5 * startvel)
+				// print((ply:GetPos() - trace.HitPos):Length(), 1.5 * startvel, duration)
+
+				UltiPar.SetVecPunchVel(Vector(0, 0, 25))
+				UltiPar.SetAngPunchVel(Vector(150, 0, 0))
+
+				VManip:PlayAnim(handAnim)
+				surface.PlaySound(soundLowClimb)
+
+				timer.Simple(duration, function()
+					UltiPar.SetVecPunchVel(Vector(100, 0, -10))
+					UltiPar.SetAngPunchVel(Vector(0, 0, -150))
+
+					VManip:PlayAnim(handAnim)
+					VMLegs:PlayAnim(legsAnim)
+					surface.PlaySound(soundVault)
+				end)
+			else
+				UltiPar.SetVecPunchVel(Vector(100, 0, -10))
+				UltiPar.SetAngPunchVel(Vector(0, 0, -150))
+
+				VManip:PlayAnim(handAnim)
+				VMLegs:PlayAnim(legsAnim)
+				surface.PlaySound(soundVault)
+			end
 		else
 			UltiPar.SetVecPunchVel(Vector(0, 0, 25))
 			UltiPar.SetAngPunchVel(Vector(0, 0, -100))
