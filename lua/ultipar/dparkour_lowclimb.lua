@@ -25,7 +25,7 @@ local dp_lc_max = CreateConVar('dp_lc_max', '0.85', { FCVAR_ARCHIVE, FCVAR_CLIEN
 local dp_lc_min = CreateConVar('dp_lc_min', '0.5', { FCVAR_ARCHIVE, FCVAR_CLIENTCMD_CAN_EXECUTE, FCVAR_NOTIFY, FCVAR_SERVER_CAN_EXECUTE })
 local dp_lcv_wmax = CreateConVar('dp_lcv_wmax', '2', { FCVAR_ARCHIVE, FCVAR_CLIENTCMD_CAN_EXECUTE, FCVAR_NOTIFY, FCVAR_SERVER_CAN_EXECUTE })
 local dp_lcv_hmax = CreateConVar('dp_lcv_hmax', '0.3', { FCVAR_ARCHIVE, FCVAR_CLIENTCMD_CAN_EXECUTE, FCVAR_NOTIFY, FCVAR_SERVER_CAN_EXECUTE })
-local dp_lcdv_h = CreateConVar('dp_lcdv_h', '0.8', { FCVAR_ARCHIVE, FCVAR_CLIENTCMD_CAN_EXECUTE, FCVAR_NOTIFY, FCVAR_SERVER_CAN_EXECUTE })
+local dp_lcdv_h = CreateConVar('dp_lcdv_h', '0.7', { FCVAR_ARCHIVE, FCVAR_CLIENTCMD_CAN_EXECUTE, FCVAR_NOTIFY, FCVAR_SERVER_CAN_EXECUTE })
 
 local action, _ = UltiPar.Register('DParkour-LowClimb')
 if CLIENT then
@@ -67,7 +67,7 @@ if CLIENT then
 			LocalPlayer():ConCommand('dp_lc_min 0.5')
 			LocalPlayer():ConCommand('dp_lcv_wmax 2')
 			LocalPlayer():ConCommand('dp_lcv_hmax 0.3')
-			LocalPlayer():ConCommand('dp_lcdv_h 0.8')
+			LocalPlayer():ConCommand('dp_lcdv_h 0.7')
 		end
 	end
 end

@@ -4,162 +4,201 @@
 	在这里, 我们使用API Register和RegisterEffect注册动作和特效, 而不是直接操作ActionSet
 --]]
 
+--[[ 
+	ActionTemplate: {
+		Name = 'template',
+		Effects = {
+			default = {
+				label = '#default',
+				func = function(ply, checkdata)
+					-- 特效
+				end
+			},
+			...
+		},
+
+		-- 指定了可以中断该动作的其他动作
+		Interrupts = {
+			ExampleAciton = 1
+		}
+
+		Check = function(ply)
+			-- 检查动作是否可执行
+			return checkdata
+		end,
+
+		Play = function(ply, checkdata)
+			-- 播放动作
+		end,
+
+		CheckEnd = number or function(ply, checkdata)
+			-- 检查动作是否执行完毕
+			return checkend
+		end,
+
+		Clear = function(ply, checkdata)
+			-- 清除动作
+		end,
+	}
+]]--
+
 UltiPar = UltiPar or {}
 UltiPar.ActionSet = UltiPar.ActionSet or {}
 UltiPar.MoveControl = {} -- 移动控制, 此变量不可直接修改, 使用SetMoveControl修改
 
+
 local ActionSet = UltiPar.ActionSet
 
-local emptyeffect = {}
-local emptyaction = {
-	Name = 'Error',
-	Effects = {
-		default = emptyeffect,
-	}
-}
-
-local function GetAction(target)
-	-- 获取动作, 返回动作表和动作名, 带有存在性检查
-	if isstring(target) then
-		return ActionSet[target], target
-	elseif istable(target) then
-		return target, target.Name
-	else 
-		ErrorNoHalt(string.format('UltiPar.GetAction() - target "%s" not valid', tostring(target)))
-		return emptyaction, 'Error'
-	end
+local function GetAction(actionName)
+	-- 获取动作
+	return ActionSet[actionName]
 end
 
 local function GetCurrentEffect(ply, action)
-	-- 获取指定玩家、指定的动作特效
-	local effect = action.Effects[ply.ultipar_effect_config[action.Name] or 'default']
-	if istable(effect) then
-		return effect
-	else
-		return emptyeffect
-	end
+	-- 获取指定玩家当前动作的特效
+	return action.Effects[ply.ultipar_effect_config[action.Name] or 'default']
 end
 
 local function GetEffect(action, effect)
 	-- 获取特效
-	local effect = action.Effects[effect]
-	if istable(effect) then
-		return effect
-	else
-		return emptyeffect
-	end
+	return action.Effects[effect]
 end
 
 local function Register(name, action)
 	-- 注册动作, 返回动作和是否已存在
-	-- 不支持覆盖, 不支持有效性检查
+	-- 不支持覆盖
 
-	local result, exist
-	if ActionSet[name] and istable(ActionSet[name]) then
-		result = ActionSet[name]
+	local exist
+	if istable(ActionSet[name]) then
+		action = ActionSet[name]
 		exist = true
 	elseif istable(action) then
-		action.Name = name
 		ActionSet[name] = action
-
-		result = action
 		exist = false
 	else
-		action = {Name = name, Effects = {}}
+		action = {}
 		ActionSet[name] = action
-
-		result = action
 		exist = false
 	end
 
-	if not exist and CLIENT and action.ActionManager then 
+	action.Name = name
+	action.Effects = action.Effects or {}
+	action.Interrupts = action.Interrupts or {}
+	action.Check = action.Check or function(ply)
+		ErrorNoHalt(string.format('Action "%s" Check function is not defined.', name))
+		return false
+	end
+
+	action.Play = action.Play or function(ply, checkdata)
+		ErrorNoHalt(string.format('Action "%s" Play function is not defined.', name))
+	end
+
+	action.CheckEnd = action.CheckEnd or function(ply, checkdata)
+		ErrorNoHalt(string.format('Action "%s" CheckEnd is not defined.', name))
+		return true
+	end
+
+	action.Clear = action.Clear or function(ply, checkdata)
+		ErrorNoHalt(string.format('Action "%s" Clear is not defined.', name))
+	end
+
+	if not exist and CLIENT and UltiPar.ActionManager then 
 		UltiPar.ActionManager:RefreshNode() 
 	end
 
-	return result, exist
+	return action, exist
 end
 
-
-local function RegisterEffect(name, effectname, effect)
+local function RegisterEffect(actionName, effectName, effect)
 	-- 注册动作特效, 返回特效和是否已存在
-	-- 不支持覆盖, 不支持有效性检查
+	-- 不支持覆盖
 
-	local action, _ = Register(name)
-	action.Effects = action.Effects or {}
+	local action = Register(actionName)
 
-	local result, exist
-	if action.Effects[effectname] and istable(action.Effects[effectname]) then
-		result = action.Effects[effectname]
+	local exist
+	if istable(action.Effects[effectName]) then
+		effect = action.Effects[effectName]
 		exist = true
 	elseif istable(effect) then
-		action.Effects[effectname] = effect
-
-		result = effect
+		action.Effects[effectName] = effect
 		exist = false
 	else
 		effect = {}
-
-		result = effect
+		action.Effects[effectName] = effect
 		exist = false
 	end
 
-	return result, exist
+	effect.func = effect.func or function(ply, checkdata)
+		-- 特效
+		ErrorNoHalt(string.format('Effect "%s" func is not defined.', effectName))
+	end
+
+	return effect, exist
 end
 
-
-local function Trigger(ply, target)
+local function Trigger(ply, actionName)
 	-- 触发动作
-	-- 客户端调用执行Check, 成功后向服务器请求执行Play
-	-- 服务器调用执行Check, 成功后执行Play并通知客户端执行 Play
+	-- 客户端调用执行Check, 成功后向服务器请求执行Play等
+	-- 服务器调用执行Check, 成功后执行Play等并通知客户端执行Play等
 
-	if SERVER and ply.ultipar_playing then 
+	local action = GetAction(actionName)
+
+	if ply.ultipar_playing and not AllowInterrupt(ply, actionName) or not action then 
 		return 
 	end
 
-	-- 当动作不存在时引发异常
-	local action, actionName = UltiPar.GetAction(target)
+	local checkresult = action.Check(ply)
+	if not checkresult then
+		return
+	end
 
-	local check = action.Check
-	if isfunction(check) then
-		local checkresult = check(ply)
-		if checkresult then
-			if SERVER and isfunction(action.Play) then
-				local succ, err = pcall(hook.Run, 'UltiParStart', ply, actionName, checkresult)
-				if not succ then
-					ErrorNoHalt(string.format('UltiParStart hook error: %s\n', err))
-				end
-
-				-- 标记进行中的动作和结束条件, 如果结束条件是实数则使用定时结束, 如果是函数则使用函数结束
-				local checkend = action.CheckEnd
-				ply.ultipar_playing = actionName
-				ply.ultipar_end = {
-					isnumber(checkend) and CurTime() + checkend or checkend,
-					checkresult
-				}
-				
-				-- 执行动作
-				action.Play(ply, checkresult)
-
-				-- 执行特效
-				local effect = GetCurrentEffect(ply, action)
-				if isfunction(effect.func) then
-					effect.func(ply, checkresult)
-				end
-
-				net.Start('UltiParPlay')
-					net.WriteString(actionName)
-					net.WriteTable(checkresult)
-				net.Send(ply)
-			elseif CLIENT then
-				net.Start('UltiParPlay')
-					net.WriteString(actionName)
-					net.WriteTable(checkresult)
-				net.SendToServer()
-			end
+	if SERVER then
+		hook.Run('UltiParStart', ply, actionName, checkresult)
+	
+		local interruptedActionName = ply.ultipar_playing
+		local interruptedCheckresult
+		local interruptedAction
+		if interruptedActionName then
+			interruptedAction = GetAction(interruptedActionName)
+			interruptedCheckresult = ply.ultipar_end[2]
+			hook.Run('UltiParEnd', ply, interruptedActionName, interruptedCheckresult, true)
+			interruptedAction.Clear(ply, interruptedCheckresult)
 		end
+
+		-- 标记进行中的动作和结束条件, 如果结束条件是实数则使用定时结束, 如果是函数则使用函数结束
+		local checkend = action.CheckEnd
+		ply.ultipar_playing = actionName
+		ply.ultipar_end = {
+			isnumber(checkend) and CurTime() + checkend or checkend,
+			checkresult
+		}
+		
+		-- 执行动作
+		action.Play(ply, checkresult)
+
+		-- 执行特效
+		local effect = GetCurrentEffect(ply, action)
+		if effect then effect.func(ply, checkresult) end
+
+		net.Start('UltiParPlay')
+			net.WriteString(actionName)
+			net.WriteTable(checkresult)
+			net.WriteString(interruptedActionName or '')
+			net.WriteTable(interruptedCheckresult or {})
+		net.Send(ply)
+	elseif CLIENT then
+		net.Start('UltiParPlay')
+			net.WriteString(actionName)
+			net.WriteTable(checkresult)
+		net.SendToServer()
 	end
 end
 
+local function AllowInterrupt(ply, actionName)
+	-- 允许中断
+	local action = GetAction(ply.ultipar_playing)
+	return action and action.Interrupts[actionName] ~= nil
+end
 
 UltiPar.debugwireframebox = function(pos, mins, maxs, lifetime, color, ignoreZ)
 	lifetime = lifetime or 1
@@ -189,6 +228,7 @@ UltiPar.GetEffect = GetEffect
 UltiPar.Trigger = Trigger
 UltiPar.Register = Register
 UltiPar.RegisterEffect = RegisterEffect
+UltiPar.AllowInterrupt = AllowInterrupt
 
 if SERVER then
 	util.AddNetworkString('UltiParMoveControl')
@@ -201,51 +241,21 @@ if SERVER then
 		local actionName = net.ReadString()
 		local effect = net.ReadString()
 		
-		local action, _ = UltiPar.GetAction(actionName)
+		local action = GetAction(actionName)
+		if not action then
+			return
+		end
 
 		local effect = GetEffect(action, effect)
-		if isfunction(effect.func) then
-			effect.func(ply, nil)
+		if not effect then
+			return
 		end
+
+		effect.func(ply, nil)
 	end)
 
 	net.Receive('UltiParPlay', function(len, ply)
-		if ply.ultipar_playing then 
-			return 
-		end
-
-		local target = net.ReadString()
-		local checkresult = net.ReadTable()
-
-		local action, actionName = UltiPar.GetAction(target)
-		if isfunction(action.Play) then
-			local succ, err = pcall(hook.Run, 'UltiParStart', ply, actionName, checkresult)
-			if not succ then
-				ErrorNoHalt(string.format('UltiParStart hook error: %s\n', err))
-			end
-
-			-- 标记进行中的动作和结束条件, 如果结束条件是实数则使用定时结束, 如果是函数则使用函数结束
-			local checkend = action.CheckEnd
-			ply.ultipar_playing = actionName
-			ply.ultipar_end = {
-				isnumber(checkend) and CurTime() + checkend or checkend,
-				checkresult
-			}
-			
-			-- 执行动作
-			action.Play(ply, checkresult)
-
-			-- 执行特效
-			local effect = GetCurrentEffect(ply, action)
-			if isfunction(effect.func) then
-				effect.func(ply, checkresult)
-			end
-
-			net.Start('UltiParPlay')
-				net.WriteString(actionName)
-				net.WriteTable(checkresult)
-			net.Send(ply)
-		end
+		xxxxxxxxxxx
 	end)
 
 	net.Receive('UltiParEffectConfig', function(len, ply)
@@ -332,7 +342,7 @@ if SERVER then
 		end
 
 		if flag then
-			local succ, err = pcall(hook.Run, 'UltiParEnd', ply, ply.ultipar_playing, checkresult)
+			local succ, err = pcall(hook.Run, 'UltiParEnd', ply, ply.ultipar_playing, checkresult, false)
 			if not succ then
 				ErrorNoHalt(string.format('UltiParEnd hook error: %s\n', err))
 			end
