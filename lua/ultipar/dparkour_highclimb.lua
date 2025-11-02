@@ -19,9 +19,9 @@ local dp_workmode = CreateConVar('dp_workmode', '1', { FCVAR_ARCHIVE, FCVAR_CLIE
 local dp_los_cos = CreateConVar('dp_los_cos', '0.64', { FCVAR_ARCHIVE, FCVAR_CLIENTCMD_CAN_EXECUTE, FCVAR_NOTIFY, FCVAR_SERVER_CAN_EXECUTE })
 
 local dp_lh_keymode = CreateConVar('dp_lh_keymode', '1', { FCVAR_ARCHIVE, FCVAR_CLIENTCMD_CAN_EXECUTE, FCVAR_NOTIFY, FCVAR_SERVER_CAN_EXECUTE })
-local dp_lh_per = CreateConVar('dp_lh_per', '0.2', { FCVAR_ARCHIVE, FCVAR_CLIENTCMD_CAN_EXECUTE, FCVAR_NOTIFY, FCVAR_SERVER_CAN_EXECUTE })
-local dp_lh_max = CreateConVar('dp_lh_max', '1.25', { FCVAR_ARCHIVE, FCVAR_CLIENTCMD_CAN_EXECUTE, FCVAR_NOTIFY, FCVAR_SERVER_CAN_EXECUTE })
-local dp_lh_min = CreateConVar('dp_lh_min', '0.9', { FCVAR_ARCHIVE, FCVAR_CLIENTCMD_CAN_EXECUTE, FCVAR_NOTIFY, FCVAR_SERVER_CAN_EXECUTE })
+local dp_lh_per = CreateConVar('dp_lh_per', '0.1', { FCVAR_ARCHIVE, FCVAR_CLIENTCMD_CAN_EXECUTE, FCVAR_NOTIFY, FCVAR_SERVER_CAN_EXECUTE })
+local dp_lh_max = CreateConVar('dp_lh_max', '1.3', { FCVAR_ARCHIVE, FCVAR_CLIENTCMD_CAN_EXECUTE, FCVAR_NOTIFY, FCVAR_SERVER_CAN_EXECUTE })
+local dp_lh_min = CreateConVar('dp_lh_min', '0.85', { FCVAR_ARCHIVE, FCVAR_CLIENTCMD_CAN_EXECUTE, FCVAR_NOTIFY, FCVAR_SERVER_CAN_EXECUTE })
 local dp_lhv_wmax = CreateConVar('dp_lhv_wmax', '1.5', { FCVAR_ARCHIVE, FCVAR_CLIENTCMD_CAN_EXECUTE, FCVAR_NOTIFY, FCVAR_SERVER_CAN_EXECUTE })
 
 local dp_lc_min = CreateConVar('dp_lc_min', '0.5', { FCVAR_ARCHIVE, FCVAR_CLIENTCMD_CAN_EXECUTE, FCVAR_NOTIFY, FCVAR_SERVER_CAN_EXECUTE })
@@ -46,9 +46,9 @@ if CLIENT then
 		panel:CheckBox('#dp.lh_keymode', 'dp_lh_keymode')
 		panel:ControlHelp('#dp.lh_keymode.help')
 
-		panel:NumSlider('#dp.lh_max', 'dp_lh_max', 0.9, 2, 2)
+		panel:NumSlider('#dp.lh_max', 'dp_lh_max', 0.85, 2, 2)
 		panel:ControlHelp('#dp.lh_max.help')
-		panel:NumSlider('#dp.lh_min', 'dp_lh_min', 0.9, 2, 2)
+		panel:NumSlider('#dp.lh_min', 'dp_lh_min', 0.85, 2, 2)
 
 		panel:NumSlider('#dp.lhv_wmax', 'dp_lhv_wmax', 0, 3, 2)
 		panel:ControlHelp('#dp.lhv_wmax.help')
@@ -58,9 +58,9 @@ if CLIENT then
 		default.DoClick = function()
 			LocalPlayer():ConCommand('dp_workmode 1')
 			LocalPlayer():ConCommand('dp_los_cos 0.64')
-			LocalPlayer():ConCommand('dp_lh_per 0.2')
-			LocalPlayer():ConCommand('dp_lh_max 1.25')
-			LocalPlayer():ConCommand('dp_lh_min 0.9')
+			LocalPlayer():ConCommand('dp_lh_per 0.1')
+			LocalPlayer():ConCommand('dp_lh_max 1.3')
+			LocalPlayer():ConCommand('dp_lh_min 0.85')
 			LocalPlayer():ConCommand('dp_lhv_wmax 1.5')
 		end
 	end
@@ -93,7 +93,7 @@ action.Check = function(ply)
 		filter = ply, 
 		mask = MASK_PLAYERSOLID,
 		start = pos,
-		endpos = pos + eyeDir * plyWidth * 0.5,
+		endpos = pos + eyeDir * plyWidth * 0.75,
 		mins = bmins,
 		maxs = bmaxs,
 	})
@@ -174,13 +174,26 @@ action.Check = function(ply)
 		local maxVaultWidthVec = eyeDir * lhv_wmax
 
 		-- 简单检测一下是否会被阻挡
-		local simpletrace1 = util.QuickTrace(trace.HitPos + unitzvec * 2, maxVaultWidthVec, ply)
-		local simpletrace2 = util.QuickTrace(trace.HitPos + unitzvec * dmaxs[3], maxVaultWidthVec, ply)
-
-		if simpletrace1.Hit or simpletrace2.Hit then
-			// print('阻挡')
+		local linelen = (lhv_wmax + 0.707 * plyWidth)
+		local line = eyeDir * linelen
+		
+		local simpletrace1 = util.QuickTrace(trace.HitPos + unitzvec * dmaxs[3], line, ply)
+		local simpletrace2 = util.QuickTrace(trace.HitPos + unitzvec * (dmaxs[3] * 0.5), line, ply)
+		
+		if simpletrace1.StartSolid or simpletrace2.StartSolid then
+			// print('卡住了')
 			return {trace, false, blockheight}
 		end
+
+		if simpletrace1.Hit or simpletrace2.Hit then
+			maxVaultWidthVec = eyeDir * math.max(
+				0, 
+				linelen * math.min(simpletrace1.Fraction, simpletrace2.Fraction) - plyWidth * 0.707
+			)
+		end
+		debugoverlay.Line(simpletrace1.StartPos, simpletrace1.HitPos, 1, Color(0, 0, 255))
+		debugoverlay.Line(simpletrace2.StartPos, simpletrace2.HitPos, 1, Color(0, 0, 255))
+
 
 		-- 检查凹陷是否符合条件 
 		startpos = trace.HitPos + maxVaultWidthVec
@@ -194,6 +207,10 @@ action.Check = function(ply)
 			mins = dmins,
 			maxs = dmaxs,
 		})
+
+		debugoverlay.Line(vchecktrace.StartPos, vchecktrace.HitPos, 1, Color(0, 0, 255))
+		debugwireframebox(vchecktrace.HitPos, dmins, dmaxs, 1, Color(0, 0, 255))
+
 
 		if vchecktrace.StartSolid then
 			// print('翻越高度检测, 卡住了')
@@ -290,13 +307,16 @@ local function DPDoubleVault(ply, mv, cmd)
 	local movedata = ply.ultipar_move
 	local dt = CurTime() - movedata.starttime
 
-	if dt < movedata.duration then 
+	if dt < 0.1 then
+		mv:SetOrigin(movedata.startpos)
+	elseif dt < 0.1 + movedata.duration then 
+		dt = dt - 0.1
 		mv:SetOrigin(
 			movedata.startpos + 
 			(0.5 * movedata.acc * dt * dt + movedata.startvel * dt) * movedata.dir
 		) 
-	elseif dt < movedata.duration + movedata.duration2 then
-		dt = dt - movedata.duration
+	elseif dt < 0.1 + movedata.duration + movedata.duration2 then
+		dt = dt - 0.1 - movedata.duration
 		mv:SetOrigin(
 			movedata.endpos + 
 			(0.5 * movedata.acc2 * dt * dt + movedata.startvel2 * dt) * movedata.dir2 +
@@ -320,7 +340,7 @@ local function StartDPDoubleVaultHigh(ply, endpos, endpos2, startvel, endvel2)
 
 	endvel2 = math.max(endvel2, startvel)
 
-	local endvel = startvel * 0.5
+	local endvel = startvel * 0.25
 	local dir = (endpos - ply:GetPos()):GetNormal()
 	local dis = (endpos - ply:GetPos()):Length()
 	local duration = 2 * dis / (endvel + startvel)
@@ -341,7 +361,7 @@ local function StartDPDoubleVaultHigh(ply, endpos, endpos2, startvel, endvel2)
 		duration = duration,
 		duration2 = duration2,
 		endvel = endvel,
-		endvel2 = endvel2 * 0.9,
+		endvel2 = endvel2 * 0.7,
 		startvel = startvel,
 		startvel2 = startvel2,
 		acc = acc,
@@ -371,10 +391,13 @@ action.Play = function(ply, data)
 		local startvel = ply:GetJumpPower() + 0.25 * (ply:KeyDown(IN_SPEED) and ply:GetRunSpeed() or ply:GetWalkSpeed())
 		local endvel2 = endvel
 
+		local startpos = trace.HitPos - dp_lc_min:GetFloat() * plyHeight * unitzvec
+		local endpos2 = dovault.HitPos
+		endpos2[3] = startpos[3]
 		StartDPDoubleVaultHigh(
 			ply, 
-			trace.HitPos - dp_lc_min:GetFloat() * plyHeight * unitzvec, 
-			dovault.HitPos, 
+			startpos, 
+			endpos2, 
 			startvel, 
 			endvel2
 		)

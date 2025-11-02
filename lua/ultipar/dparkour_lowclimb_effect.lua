@@ -5,6 +5,8 @@
 
 local dp_lcdv_h = CreateConVar('dp_lcdv_h', '0.8', { FCVAR_ARCHIVE, FCVAR_CLIENTCMD_CAN_EXECUTE, FCVAR_NOTIFY, FCVAR_SERVER_CAN_EXECUTE })
 
+if SERVER then return end
+
 local function LowClimbEffect(ply, data, handAnim, legsAnim, soundVault, soundLowClimb)
 	if data == nil then
 		-- 演示模式

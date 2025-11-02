@@ -19,7 +19,7 @@ local dp_workmode = CreateConVar('dp_workmode', '1', { FCVAR_ARCHIVE, FCVAR_CLIE
 local dp_los_cos = CreateConVar('dp_los_cos', '0.64', { FCVAR_ARCHIVE, FCVAR_CLIENTCMD_CAN_EXECUTE, FCVAR_NOTIFY, FCVAR_SERVER_CAN_EXECUTE })
 
 local dp_lc_keymode = CreateConVar('dp_lc_keymode', '1', { FCVAR_ARCHIVE, FCVAR_CLIENTCMD_CAN_EXECUTE, FCVAR_NOTIFY, FCVAR_SERVER_CAN_EXECUTE })
-local dp_lc_per = CreateConVar('dp_lc_per', '0.2', { FCVAR_ARCHIVE, FCVAR_CLIENTCMD_CAN_EXECUTE, FCVAR_NOTIFY, FCVAR_SERVER_CAN_EXECUTE })
+local dp_lc_per = CreateConVar('dp_lc_per', '0.1', { FCVAR_ARCHIVE, FCVAR_CLIENTCMD_CAN_EXECUTE, FCVAR_NOTIFY, FCVAR_SERVER_CAN_EXECUTE })
 local dp_lc_max = CreateConVar('dp_lc_max', '0.85', { FCVAR_ARCHIVE, FCVAR_CLIENTCMD_CAN_EXECUTE, FCVAR_NOTIFY, FCVAR_SERVER_CAN_EXECUTE })
 local dp_lc_min = CreateConVar('dp_lc_min', '0.5', { FCVAR_ARCHIVE, FCVAR_CLIENTCMD_CAN_EXECUTE, FCVAR_NOTIFY, FCVAR_SERVER_CAN_EXECUTE })
 local dp_lcv_wmax = CreateConVar('dp_lcv_wmax', '2', { FCVAR_ARCHIVE, FCVAR_CLIENTCMD_CAN_EXECUTE, FCVAR_NOTIFY, FCVAR_SERVER_CAN_EXECUTE })
@@ -45,9 +45,9 @@ if CLIENT then
 		panel:CheckBox('#dp.lc_keymode', 'dp_lc_keymode')
 		panel:ControlHelp('#dp.lc_keymode.help')
 
-		panel:NumSlider('#dp.lc_max', 'dp_lc_max', 0, 1, 2)
+		panel:NumSlider('#dp.lc_max', 'dp_lc_max', 0, 0.85, 2)
 		panel:ControlHelp('#dp.lc_max.help')
-		panel:NumSlider('#dp.lc_min', 'dp_lc_min', 0, 1, 2)
+		panel:NumSlider('#dp.lc_min', 'dp_lc_min', 0, 0.85, 2)
 
 		panel:NumSlider('#dp.lcv_wmax', 'dp_lcv_wmax', 0, 3, 2)
 		panel:ControlHelp('#dp.lcv_wmax.help')
@@ -59,7 +59,7 @@ if CLIENT then
 		default.DoClick = function()
 			LocalPlayer():ConCommand('dp_workmode 1')
 			LocalPlayer():ConCommand('dp_los_cos 0.64')
-			LocalPlayer():ConCommand('dp_lc_per 0.2')
+			LocalPlayer():ConCommand('dp_lc_per 0.1')
 			LocalPlayer():ConCommand('dp_lc_max 0.85')
 			LocalPlayer():ConCommand('dp_lc_min 0.5')
 			LocalPlayer():ConCommand('dp_lcv_wmax 2')
@@ -101,7 +101,7 @@ action.Check = function(ply)
 		maxs = bmaxs,
 	})
 
-	debugwireframebox(BlockTrace.HitPos, bmins, bmaxs, 0.5, BlockTrace.Hit and BlockTrace.HitNormal[3] < 0.707 and Color(255, 0, 0) or Color(0, 255, 0))
+	debugwireframebox(BlockTrace.HitPos, bmins, bmaxs, 1, BlockTrace.Hit and BlockTrace.HitNormal[3] < 0.707 and Color(255, 0, 0) or Color(0, 255, 0))
 	if not BlockTrace.Hit or BlockTrace.HitNormal[3] >= 0.707 then
 		// print('非障碍')
 		return
@@ -162,9 +162,9 @@ action.Check = function(ply)
 	end
 
 	// PrintTable(trace)
-	debugoverlay.Line(trace.StartPos, trace.HitPos, 0.5, Color(255, 255, 0))
-	debugwireframebox(trace.StartPos, dmins, dmaxs, 0.5, Color(0, 255, 255))
-	debugwireframebox(trace.HitPos, dmins, dmaxs, 0.5, Color(255, 255, 0))
+	debugoverlay.Line(trace.StartPos, trace.HitPos, 1, Color(255, 255, 0))
+	debugwireframebox(trace.StartPos, dmins, dmaxs, 1, Color(0, 255, 255))
+	debugwireframebox(trace.HitPos, dmins, dmaxs, 1, Color(255, 255, 0))
 
 	trace.HitPos[3] = trace.HitPos[3] + 1
 
@@ -177,13 +177,25 @@ action.Check = function(ply)
 		local maxVaultWidthVec = eyeDir * lcv_wmax
 
 		-- 简单检测一下是否会被阻挡
-		local simpletrace1 = util.QuickTrace(trace.HitPos + unitzvec * 2, maxVaultWidthVec, ply)
-		local simpletrace2 = util.QuickTrace(trace.HitPos + unitzvec * dmaxs[3], maxVaultWidthVec, ply)
-
-		if simpletrace1.Hit or simpletrace2.Hit then
-			// print('阻挡')
+		local linelen = (lcv_wmax + 0.707 * plyWidth)
+		local line = eyeDir * linelen
+		
+		local simpletrace1 = util.QuickTrace(trace.HitPos + unitzvec * dmaxs[3], line, ply)
+		local simpletrace2 = util.QuickTrace(trace.HitPos + unitzvec * (dmaxs[3] * 0.5), line, ply)
+		
+		if simpletrace1.StartSolid or simpletrace2.StartSolid then
+			// print('卡住了')
 			return {trace, false, blockheight}
 		end
+
+		if simpletrace1.Hit or simpletrace2.Hit then
+			maxVaultWidthVec = eyeDir * math.max(
+				0, 
+				linelen * math.min(simpletrace1.Fraction, simpletrace2.Fraction) - plyWidth * 0.707
+			)
+		end
+		debugoverlay.Line(simpletrace1.StartPos, simpletrace1.HitPos, 1, Color(0, 0, 255))
+		debugoverlay.Line(simpletrace2.StartPos, simpletrace2.HitPos, 1, Color(0, 0, 255))
 
 		-- 检查凹陷是否符合条件 
 		startpos = trace.HitPos + maxVaultWidthVec
@@ -198,6 +210,9 @@ action.Check = function(ply)
 			maxs = dmaxs,
 		})
 
+		debugoverlay.Line(vchecktrace.StartPos, vchecktrace.HitPos, 1, Color(0, 0, 255))
+		debugwireframebox(vchecktrace.HitPos, dmins, dmaxs, 1, Color(0, 0, 255))
+
 		if vchecktrace.StartSolid then
 			// print('翻越高度检测, 卡住了')
 			return {trace, false, blockheight}
@@ -208,9 +223,6 @@ action.Check = function(ply)
 			// print('凹陷程度不足')
 			return {trace, false, blockheight}
 		end
-
-		debugoverlay.Line(vchecktrace.StartPos, vchecktrace.HitPos, 0.5, Color(0, 0, 255))
-		debugwireframebox(vchecktrace.HitPos, dmins, dmaxs, 0.5, Color(0, 0, 255))
 
 		local pmins, pmaxs = ply:GetCollisionBounds()
 
@@ -230,8 +242,8 @@ action.Check = function(ply)
 			return {trace, false, blockheight}
 		end
 
-		debugoverlay.Line(hchecktrace.StartPos, hchecktrace.HitPos, 0.5, Color(0, 0, 0))
-		debugwireframebox(hchecktrace.HitPos, pmins, pmaxs, 0.5, Color(0, 0, 0))
+		debugoverlay.Line(hchecktrace.StartPos, hchecktrace.HitPos, 1, Color(0, 0, 0))
+		debugwireframebox(hchecktrace.HitPos, pmins, pmaxs, 1, Color(0, 0, 0))
 
 		hchecktrace.HitPos = hchecktrace.HitPos + eyeDir * math.min(5, hchecktrace.Fraction * lcv_wmax)
 
@@ -417,10 +429,14 @@ action.Play = function(ply, data)
 			local startvel = ply:GetJumpPower() + 0.25 * (ply:KeyDown(IN_SPEED) and ply:GetRunSpeed() or ply:GetWalkSpeed())
 			local endvel2 = endvel
 
+			local startpos = trace.HitPos - dp_lc_min:GetFloat() * plyHeight * unitzvec
+			local endpos2 = dovault.HitPos
+			endpos2[3] = startpos[3]
+
 			StartDPDoubleVault(
 				ply, 
-				trace.HitPos - dp_lc_min:GetFloat() * plyHeight * unitzvec, 
-				dovault.HitPos, 
+				startpos, 
+				endpos2, 
 				startvel, 
 				endvel2
 			)
