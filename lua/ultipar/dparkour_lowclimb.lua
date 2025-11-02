@@ -1,7 +1,6 @@
 --[[
-原文件作者:白狼
-主页:https://steamcommunity.com/id/whitewolfking/
-此文件为其修改版本。
+作者:白狼
+2025 11 1
 ]]--
 
 ---------------------- 低爬动作 ----------------------
@@ -24,7 +23,6 @@ local dp_lc_per = CreateConVar('dp_lc_per', '0.2', { FCVAR_ARCHIVE, FCVAR_CLIENT
 local dp_lc_max = CreateConVar('dp_lc_max', '0.85', { FCVAR_ARCHIVE, FCVAR_CLIENTCMD_CAN_EXECUTE, FCVAR_NOTIFY, FCVAR_SERVER_CAN_EXECUTE })
 local dp_lc_min = CreateConVar('dp_lc_min', '0.5', { FCVAR_ARCHIVE, FCVAR_CLIENTCMD_CAN_EXECUTE, FCVAR_NOTIFY, FCVAR_SERVER_CAN_EXECUTE })
 local dp_lcv_wmax = CreateConVar('dp_lcv_wmax', '2', { FCVAR_ARCHIVE, FCVAR_CLIENTCMD_CAN_EXECUTE, FCVAR_NOTIFY, FCVAR_SERVER_CAN_EXECUTE })
-local dp_lcv_hmax = CreateConVar('dp_lcv_hmax', '0.3', { FCVAR_ARCHIVE, FCVAR_CLIENTCMD_CAN_EXECUTE, FCVAR_NOTIFY, FCVAR_SERVER_CAN_EXECUTE })
 local dp_lcdv_h = CreateConVar('dp_lcdv_h', '0.7', { FCVAR_ARCHIVE, FCVAR_CLIENTCMD_CAN_EXECUTE, FCVAR_NOTIFY, FCVAR_SERVER_CAN_EXECUTE })
 
 local action, _ = UltiPar.Register('DParkour-LowClimb')
@@ -53,8 +51,7 @@ if CLIENT then
 
 		panel:NumSlider('#dp.lcv_wmax', 'dp_lcv_wmax', 0, 3, 2)
 		panel:ControlHelp('#dp.lcv_wmax.help')
-		panel:NumSlider('#dp.lcv_hmax', 'dp_lcv_hmax', 0, 1, 2)
-		panel:ControlHelp('#dp.lcv_hmax.help')
+
 		panel:NumSlider('#dp.lcdv_h', 'dp_lcdv_h', 0, 1, 2)
 		panel:ControlHelp('#dp.lcdv_h.help')
 		
@@ -66,7 +63,6 @@ if CLIENT then
 			LocalPlayer():ConCommand('dp_lc_max 0.85')
 			LocalPlayer():ConCommand('dp_lc_min 0.5')
 			LocalPlayer():ConCommand('dp_lcv_wmax 2')
-			LocalPlayer():ConCommand('dp_lcv_hmax 0.3')
 			LocalPlayer():ConCommand('dp_lcdv_h 0.7')
 		end
 	end
@@ -170,16 +166,14 @@ action.Check = function(ply)
 	debugwireframebox(trace.StartPos, dmins, dmaxs, 0.5, Color(0, 255, 255))
 	debugwireframebox(trace.HitPos, dmins, dmaxs, 0.5, Color(255, 255, 0))
 
-	-- OK, 如果按下了前向键并且高度在可翻越的范围内, 再检测一下是否符合翻越条件
-	local lcv_wmax = dp_lcv_wmax:GetFloat() * plyWidth
-	local lcv_hmax = dp_lcv_hmax:GetFloat() * plyHeight
-	
 	trace.HitPos[3] = trace.HitPos[3] + 1
-	if ply:KeyDown(IN_FORWARD) then
+
+	-- OK, 如果按下了前向键并且没有按下蹲键, 再检测一下是否符合翻越条件
+	if ply:KeyDown(IN_FORWARD) and not ply:KeyDown(IN_DUCK) then
 		-- 翻越不需要检查落脚点是否在斜坡上
 	
-		-- lcv_hmax 新落脚点必须小于这个高度。
 		-- lcv_wmax 是最大翻越宽度
+		local lcv_wmax = dp_lcv_wmax:GetFloat() * plyWidth
 		local maxVaultWidthVec = eyeDir * lcv_wmax
 
 		-- 简单检测一下是否会被阻挡
@@ -209,15 +203,16 @@ action.Check = function(ply)
 			return {trace, false, blockheight}
 		end
 
-		-- 确保落在凹陷的地方
-		if vchecktrace.HitPos[3] - pos[3] > lcv_hmax then
-			// print('翻越高度不符合')
+		// print(vchecktrace.Fraction * blockheight, math.min(lc_min, 0.2 * plyHeight))
+		if vchecktrace.Fraction * blockheight < math.min(lc_min, 0.2 * plyHeight) then
+			// print('凹陷程度不足')
 			return {trace, false, blockheight}
 		end
 
 		debugoverlay.Line(vchecktrace.StartPos, vchecktrace.HitPos, 0.5, Color(0, 0, 255))
 		debugwireframebox(vchecktrace.HitPos, dmins, dmaxs, 0.5, Color(0, 0, 255))
 
+		local pmins, pmaxs = ply:GetCollisionBounds()
 
 		startpos = vchecktrace.HitPos + unitzvec
 		endpos = startpos - maxVaultWidthVec
@@ -226,8 +221,8 @@ action.Check = function(ply)
 			mask = MASK_PLAYERSOLID,
 			start = startpos,
 			endpos = endpos,
-			mins = dmins,
-			maxs = dmaxs,
+			mins = pmins,
+			maxs = pmaxs,
 		})
 
 		if hchecktrace.HitPos:Distance2DSqr(trace.HitPos) > lcv_wmax * lcv_wmax then
@@ -236,7 +231,7 @@ action.Check = function(ply)
 		end
 
 		debugoverlay.Line(hchecktrace.StartPos, hchecktrace.HitPos, 0.5, Color(0, 0, 0))
-		debugwireframebox(hchecktrace.HitPos, dmins, dmaxs, 0.5, Color(0, 0, 0))
+		debugwireframebox(hchecktrace.HitPos, pmins, pmaxs, 0.5, Color(0, 0, 0))
 
 		hchecktrace.HitPos = hchecktrace.HitPos + eyeDir * math.min(5, hchecktrace.Fraction * lcv_wmax)
 
@@ -270,7 +265,7 @@ local function DPVault(ply, mv, cmd)
 	end
 end
 
-local function StartDPVault(ply, endpos, endvel, needduck)
+local function StartDPVault(ply, endpos, endvel)
 	ply:SetMoveType(MOVETYPE_NOCLIP)
 
 	local startvel = ply:GetVelocity():Length()
@@ -291,9 +286,7 @@ local function StartDPVault(ply, endpos, endvel, needduck)
 		dir = dir,
 	}
 
-	UltiPar.SetMoveControl(ply, true, true, 
-		needduck and IN_JUMP or bit.bor(IN_JUMP, IN_DUCK), 
-		needduck and IN_DUCK or 0)
+	UltiPar.SetMoveControl(ply, true, true, bit.bor(IN_JUMP, IN_DUCK), 0)
 end
 
 local function DPUpWall(ply, mv, cmd)
@@ -313,7 +306,7 @@ local function DPUpWall(ply, mv, cmd)
 	end
 end
 
-local function StartDPUpWall(ply, endpos, startvel, needduck)
+local function StartDPUpWall(ply, endpos, startvel)
 	ply:SetMoveType(MOVETYPE_NOCLIP)
 
 	local dir = (endpos - ply:GetPos()):GetNormal()
@@ -332,9 +325,7 @@ local function StartDPUpWall(ply, endpos, startvel, needduck)
 		dir = dir,
 	}
 
-	UltiPar.SetMoveControl(ply, true, true, 
-		needduck and IN_JUMP or bit.bor(IN_JUMP, IN_DUCK), 
-		needduck and IN_DUCK or 0)
+	UltiPar.SetMoveControl(ply, true, true, bit.bor(IN_JUMP, IN_DUCK), 0)
 end
 
 local function DPDoubleVault(ply, mv, cmd)
@@ -426,41 +417,15 @@ action.Play = function(ply, data)
 			local startvel = ply:GetJumpPower() + 0.25 * (ply:KeyDown(IN_SPEED) and ply:GetRunSpeed() or ply:GetWalkSpeed())
 			local endvel2 = endvel
 
-			local endpos2 = dovault.HitPos
-			local spacecheck = util.TraceHull({
-				filter = ply, 
-				mask = MASK_PLAYERSOLID,
-				start = endpos2,
-				endpos = endpos2,
-				mins = pmins,
-				maxs = pmaxs,
-			})
-
 			StartDPDoubleVault(
 				ply, 
 				trace.HitPos - dp_lc_min:GetFloat() * plyHeight * unitzvec, 
-				endpos2, 
+				dovault.HitPos, 
 				startvel, 
-				endvel2,
-				spacecheck.Hit or spacecheck.StartSolid
+				endvel2
 			)
 		else
-			local endpos = dovault.HitPos
-			local spacecheck = util.TraceHull({
-				filter = ply, 
-				mask = MASK_PLAYERSOLID,
-				start = endpos,
-				endpos = endpos,
-				mins = pmins,
-				maxs = pmaxs,
-			})
-
-			StartDPVault(
-				ply, 
-				endpos, 
-				endvel, 
-				spacecheck.Hit or spacecheck.StartSolid
-			)
+			StartDPVault(ply, dovault.HitPos, endvel)
 		end
 	else
 		local startvel = ply:GetJumpPower() + 0.25 * (ply:KeyDown(IN_SPEED) and ply:GetRunSpeed() or ply:GetWalkSpeed())
@@ -475,10 +440,6 @@ action.Play = function(ply, data)
 			maxs = pmaxs,
 		})
 
-		print(spacecheck.Hit or spacecheck.StartSolid)
-
-		debugwireframebox(endpos, pmins, pmaxs)
-
 		StartDPUpWall(
 			ply, 
 			endpos, 
@@ -487,9 +448,6 @@ action.Play = function(ply, data)
 		)
 	end
 end
-
-
-
 
 if CLIENT then
 	local triggertime = 0

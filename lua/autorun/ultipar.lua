@@ -1,4 +1,7 @@
 --[[
+	作者:白狼
+	2025 11 1
+
 	使用ActionSet存储动作
 	ActionSet以及Action.Effects具有单向写入的性质, 不支持覆盖。
 	在这里, 我们使用API Register和RegisterEffect注册动作和特效, 而不是直接操作ActionSet
@@ -142,7 +145,7 @@ local function AllowInterrupt(ply, actionName)
 	return action and action.Interrupts[actionName] ~= nil
 end
 
-local function Trigger(ply, actionName)
+local function Trigger(ply, actionName, appenddata)
 	-- 触发动作
 	-- 客户端调用执行Check, 成功后向服务器请求执行Play等
 	-- 服务器调用执行Check, 成功后执行Play等并通知客户端执行Play等
@@ -153,7 +156,7 @@ local function Trigger(ply, actionName)
 		return 
 	end
 
-	local checkresult = action.Check(ply)
+	local checkresult = action.Check(ply, appenddata)
 	if not checkresult then
 		return
 	end

@@ -1,8 +1,8 @@
 --[[
-原文件作者:白狼
-主页:https://steamcommunity.com/id/whitewolfking/
-此文件为其修改版本。
+作者:白狼
+2025 11 1
 ]]--
+
 local dp_lcdv_h = CreateConVar('dp_lcdv_h', '0.8', { FCVAR_ARCHIVE, FCVAR_CLIENTCMD_CAN_EXECUTE, FCVAR_NOTIFY, FCVAR_SERVER_CAN_EXECUTE })
 
 local function LowClimbEffect(ply, data, handAnim, legsAnim, soundVault, soundLowClimb)
