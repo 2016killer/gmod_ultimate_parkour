@@ -72,6 +72,10 @@ if CLIENT then
 	end
 end
 
+action.Clear = function()
+	// print('低爬动作清除')
+end
+
 action.Check = function(ply)
 	if ply:GetMoveType() == MOVETYPE_NOCLIP or ply:InVehicle() or !ply:Alive() then 
 		return
@@ -266,7 +270,7 @@ local function DPVault(ply, mv, cmd)
 	end
 end
 
-local function StartDPVault(ply, endpos, endvel)
+local function StartDPVault(ply, endpos, endvel, needduck)
 	ply:SetMoveType(MOVETYPE_NOCLIP)
 
 	local startvel = ply:GetVelocity():Length()
@@ -287,7 +291,9 @@ local function StartDPVault(ply, endpos, endvel)
 		dir = dir,
 	}
 
-	UltiPar.SetMoveControl(ply, true, true, removekeys or IN_JUMP, addkeys or 0)
+	UltiPar.SetMoveControl(ply, true, true, 
+		needduck and IN_JUMP or bit.bor(IN_JUMP, IN_DUCK), 
+		needduck and IN_DUCK or 0)
 end
 
 local function DPUpWall(ply, mv, cmd)
@@ -307,7 +313,7 @@ local function DPUpWall(ply, mv, cmd)
 	end
 end
 
-local function StartDPUpWall(ply, endpos, startvel)
+local function StartDPUpWall(ply, endpos, startvel, needduck)
 	ply:SetMoveType(MOVETYPE_NOCLIP)
 
 	local dir = (endpos - ply:GetPos()):GetNormal()
@@ -326,9 +332,10 @@ local function StartDPUpWall(ply, endpos, startvel)
 		dir = dir,
 	}
 
-	UltiPar.SetMoveControl(ply, true, true, removekeys or IN_JUMP, addkeys or 0)
+	UltiPar.SetMoveControl(ply, true, true, 
+		needduck and IN_JUMP or bit.bor(IN_JUMP, IN_DUCK), 
+		needduck and IN_DUCK or 0)
 end
-
 
 local function DPDoubleVault(ply, mv, cmd)
 	local movedata = ply.ultipar_move
@@ -355,7 +362,7 @@ local function DPDoubleVault(ply, mv, cmd)
 	end
 end
 
-local function StartDPDoubleVault(ply, endpos, endpos2, startvel, endvel2)
+local function StartDPDoubleVault(ply, endpos, endpos2, startvel, endvel2, needduck)
 	ply:SetMoveType(MOVETYPE_NOCLIP)
 
 	local plyvel = ply:GetVelocity():Length()
@@ -394,7 +401,9 @@ local function StartDPDoubleVault(ply, endpos, endpos2, startvel, endvel2)
 		dir2 = dir2,
 	}
 
-	UltiPar.SetMoveControl(ply, true, true, removekeys or IN_JUMP, addkeys or 0)
+	UltiPar.SetMoveControl(ply, true, true, 
+		needduck and IN_JUMP or bit.bor(IN_JUMP, IN_DUCK), 
+		needduck and IN_DUCK or 0)
 end
 
 UltiPar.StartDPVault = StartDPVault
@@ -406,29 +415,76 @@ action.Play = function(ply, data)
 	local trace, dovault, blockheight = unpack(data)
 
 	// UltiPar.StartEasyMove(ply, trace.HitPos, 0.3)
-
+	local pmins, pmaxs = ply:GetCollisionBounds()
 	if dovault then
 		-- 触发二段翻越时, 首先触发低爬直到障碍高度为最小高度
 		-- 整体节奏是以初始速度低爬衰减到0.5倍, 再加速翻越, 最终速度将是0.9倍
 		
 		local endvel = ply:GetJumpPower() + (ply:KeyDown(IN_SPEED) and ply:GetRunSpeed() or ply:GetWalkSpeed())
-		local pmins, pmaxs = ply:GetCollisionBounds()
 		local plyHeight = pmaxs[3] - pmins[3]
 		if blockheight > dp_lcdv_h:GetFloat() * plyHeight then
 			local startvel = ply:GetJumpPower() + 0.25 * (ply:KeyDown(IN_SPEED) and ply:GetRunSpeed() or ply:GetWalkSpeed())
 			local endvel2 = endvel
+
+			local endpos2 = dovault.HitPos
+			local spacecheck = util.TraceHull({
+				filter = ply, 
+				mask = MASK_PLAYERSOLID,
+				start = endpos2,
+				endpos = endpos2,
+				mins = pmins,
+				maxs = pmaxs,
+			})
+
 			StartDPDoubleVault(
 				ply, 
-				trace.HitPos - dp_lc_min:GetFloat() * plyHeight * unitzvec, dovault.HitPos, 
+				trace.HitPos - dp_lc_min:GetFloat() * plyHeight * unitzvec, 
+				endpos2, 
 				startvel, 
-				endvel2
+				endvel2,
+				spacecheck.Hit or spacecheck.StartSolid
 			)
 		else
-			StartDPVault(ply, dovault.HitPos, endvel)
+			local endpos = dovault.HitPos
+			local spacecheck = util.TraceHull({
+				filter = ply, 
+				mask = MASK_PLAYERSOLID,
+				start = endpos,
+				endpos = endpos,
+				mins = pmins,
+				maxs = pmaxs,
+			})
+
+			StartDPVault(
+				ply, 
+				endpos, 
+				endvel, 
+				spacecheck.Hit or spacecheck.StartSolid
+			)
 		end
 	else
 		local startvel = ply:GetJumpPower() + 0.25 * (ply:KeyDown(IN_SPEED) and ply:GetRunSpeed() or ply:GetWalkSpeed())
-		StartDPUpWall(ply, trace.HitPos, startvel)
+		
+		local endpos = trace.HitPos
+		local spacecheck = util.TraceHull({
+			filter = ply, 
+			mask = MASK_PLAYERSOLID,
+			start = endpos,
+			endpos = endpos,
+			mins = pmins,
+			maxs = pmaxs,
+		})
+
+		print(spacecheck.Hit or spacecheck.StartSolid)
+
+		debugwireframebox(endpos, pmins, pmaxs)
+
+		StartDPUpWall(
+			ply, 
+			endpos, 
+			startvel, 
+			spacecheck.Hit or spacecheck.StartSolid
+		)
 	end
 end
 

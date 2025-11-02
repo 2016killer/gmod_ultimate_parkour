@@ -85,21 +85,21 @@ local function Register(name, action)
 	action.Effects = action.Effects or {}
 	action.Interrupts = action.Interrupts or {}
 	action.Check = action.Check or function(ply)
-		ErrorNoHalt(string.format('Action "%s" Check function is not defined.', name))
+		ErrorNoHalt(string.format('[UltiPar]: Action "%s" Check function is not defined.\n', name))
 		return false
 	end
 
 	action.Play = action.Play or function(ply, checkdata)
-		ErrorNoHalt(string.format('Action "%s" Play function is not defined.', name))
+		ErrorNoHalt(string.format('[UltiPar]: Action "%s" Play function is not defined.\n', name))
 	end
 
 	action.CheckEnd = action.CheckEnd or function(ply, checkdata)
-		ErrorNoHalt(string.format('Action "%s" CheckEnd is not defined.', name))
+		ErrorNoHalt(string.format('[UltiPar]: Action "%s" CheckEnd is not defined.\n', name))
 		return true
 	end
 
 	action.Clear = action.Clear or function(ply, checkdata)
-		ErrorNoHalt(string.format('Action "%s" Clear is not defined.', name))
+		ErrorNoHalt(string.format('[UltiPar]: Action "%s" Clear is not defined.\n', name))
 	end
 
 	if not exist and CLIENT and UltiPar.ActionManager then 
@@ -130,10 +130,16 @@ local function RegisterEffect(actionName, effectName, effect)
 
 	effect.func = effect.func or function(ply, checkdata)
 		-- 特效
-		ErrorNoHalt(string.format('Effect "%s" func is not defined.', effectName))
+		ErrorNoHalt(string.format('Effect "%s" func is not defined.\n', effectName))
 	end
 
 	return effect, exist
+end
+
+local function AllowInterrupt(ply, actionName)
+	-- 允许中断
+	local action = GetAction(ply.ultipar_playing)
+	return action and action.Interrupts[actionName] ~= nil
 end
 
 local function Trigger(ply, actionName)
@@ -194,11 +200,6 @@ local function Trigger(ply, actionName)
 	end
 end
 
-local function AllowInterrupt(ply, actionName)
-	-- 允许中断
-	local action = GetAction(ply.ultipar_playing)
-	return action and action.Interrupts[actionName] ~= nil
-end
 
 UltiPar.debugwireframebox = function(pos, mins, maxs, lifetime, color, ignoreZ)
 	lifetime = lifetime or 1
@@ -255,7 +256,48 @@ if SERVER then
 	end)
 
 	net.Receive('UltiParPlay', function(len, ply)
-		xxxxxxxxxxx
+		local actionName = net.ReadString()
+		local checkresult = net.ReadTable()
+
+		local action = GetAction(actionName)
+
+		if ply.ultipar_playing and not AllowInterrupt(ply, actionName) or not action then 
+			return 
+		end
+
+		hook.Run('UltiParStart', ply, actionName, checkresult)
+	
+		local interruptedActionName = ply.ultipar_playing
+		local interruptedCheckresult
+		local interruptedAction
+		if interruptedActionName then
+			interruptedAction = GetAction(interruptedActionName)
+			interruptedCheckresult = ply.ultipar_end[2]
+			hook.Run('UltiParEnd', ply, interruptedActionName, interruptedCheckresult, true)
+			interruptedAction.Clear(ply, interruptedCheckresult)
+		end
+
+		-- 标记进行中的动作和结束条件, 如果结束条件是实数则使用定时结束, 如果是函数则使用函数结束
+		local checkend = action.CheckEnd
+		ply.ultipar_playing = actionName
+		ply.ultipar_end = {
+			isnumber(checkend) and CurTime() + checkend or checkend,
+			checkresult
+		}
+		
+		-- 执行动作
+		action.Play(ply, checkresult)
+
+		-- 执行特效
+		local effect = GetCurrentEffect(ply, action)
+		if effect then effect.func(ply, checkresult) end
+
+		net.Start('UltiParPlay')
+			net.WriteString(actionName)
+			net.WriteTable(checkresult)
+			net.WriteString(interruptedActionName or '')
+			net.WriteTable(interruptedCheckresult or {})
+		net.Send(ply)
 	end)
 
 	net.Receive('UltiParEffectConfig', function(len, ply)
@@ -336,32 +378,22 @@ if SERVER then
 		elseif isfunction(checkend) then
 			flag = checkend(ply, checkresult)
 		else
-			-- 针对无进行态的动作, 直接清除不向客户端发送结束消息
-			ply.ultipar_playing = nil
-			return
+			flag = true
 		end
 
 		if flag then
-			local succ, err = pcall(hook.Run, 'UltiParEnd', ply, ply.ultipar_playing, checkresult, false)
-			if not succ then
-				ErrorNoHalt(string.format('UltiParEnd hook error: %s\n', err))
-			end
-			
+			local actionName = ply.ultipar_playing
+			ply.ultipar_playing = nil
+			ply.ultipar_end = nil
+
 			net.Start('UltiParEnd')
-				net.WriteString(ply.ultipar_playing)
+				net.WriteString(actionName)
 				net.WriteTable(checkresult)
 			net.Send(ply)
 
-			local action, actionName = UltiPar.GetAction(ply.ultipar_playing)
-			if isfunction(action.Clear) then
-				local succ, err = pcall(action.Clear, ply, checkresult)
-				if not succ then
-					ErrorNoHalt(string.format('UltiParEnd action.Clear error: %s\n', err))
-				end
-			end
-
-			ply.ultipar_playing = nil
-			ply.ultipar_end = nil
+			local action = GetAction(actionName)
+			action.Clear(ply, checkresult)
+			hook.Run('UltiParEnd', ply, actionName, checkresult, false)
 		end
 
 	end)
@@ -390,40 +422,38 @@ if SERVER then
 
 elseif CLIENT then
 	net.Receive('UltiParPlay', function(len, ply)
-		local target = net.ReadString()
+		local actionName = net.ReadString()
 		local checkresult = net.ReadTable()
+		local interruptedActionName = net.ReadString()
+		local interruptedCheckresult = net.ReadTable()
 
 		ply = LocalPlayer()
-		local action, actionName = UltiPar.GetAction(target)
-		if isfunction(action.Play) then	
-			local succ, err = pcall(action.Play, ply, checkresult)
-			if not succ then
-				ErrorNoHalt(string.format('UltiParPlay action.Play error: %s\n', err))
-			end
 
-			-- 执行特效
-			local effect = GetCurrentEffect(ply, action)
-			if isfunction(effect.func) then
-				local succ, err = pcall(effect.func, ply, checkresult)
-				if not succ then
-					ErrorNoHalt(string.format('UltiParPlay effect %s error: %s\n', effect.label, err))
-				end
-			end
+		if interruptedActionName ~= '' then
+			local interruptedAction = GetAction(interruptedActionName)
+			interruptedAction.Clear(ply, interruptedCheckresult)
+		end
+
+
+		local action = GetAction(actionName)
+	
+		action.Play(ply, checkresult)
+	
+		-- 执行特效
+		local effect = GetCurrentEffect(ply, action)
+		if effect then
+			effect.func(ply, checkresult)
 		end
 	end)
 
 	net.Receive('UltiParEnd', function(len, ply)
-		local target = net.ReadString()
+		local actionName = net.ReadString()
 		local checkresult = net.ReadTable()
 
 		ply = LocalPlayer()
-		local action, actionName = UltiPar.GetAction(target)
-		if isfunction(action.Clear) then	
-			local succ, err = pcall(action.Clear, ply, checkresult)
-			if not succ then
-				ErrorNoHalt(string.format('UltiParEnd action.Clear error: %s\n', err))
-			end
-		end
+		local action = UltiPar.GetAction(actionName)
+
+		action.Clear(ply, checkresult)
 	end)
 
 	local function LoadEffectFromDisk(path)
@@ -440,7 +470,7 @@ elseif CLIENT then
 				return default_config
 			else
 				-- 文件内容损坏
-				ErrorNoHalt(string.format('UltiPar.LoadEffectFromDisk() - file '%s' content is not valid json\n', path))
+				ErrorNoHalt(string.format('UltiPar.LoadEffectFromDisk() - file "%s" content is not valid json\n', path))
 				return nil
 			end
 		end
@@ -630,8 +660,8 @@ if CLIENT then
 	end
 
 	-- UI界面
-	UltiPar.CreateActionEditor = function(target)
-		local action, actionName = UltiPar.GetAction(target)
+	UltiPar.CreateActionEditor = function(actionName)
+		local action = UltiPar.GetAction(actionName)
 
 		local Window = vgui.Create('DFrame')
 		Window:SetTitle(language.GetPhrase('ultipar.actionmanager') .. '  ' .. actionName)
