@@ -145,6 +145,33 @@ local function AllowInterrupt(ply, actionName)
 	return action and action.Interrupts[actionName] ~= nil
 end
 
+local function DisableAction(actionName)
+	-- 禁用动作
+	ActionSet[actionName].Disable = true
+end
+
+local function EnableAction(actionName)
+	-- 启用动作
+	ActionSet[actionName].Disable = false
+end
+
+local function ToggleAction(actionName)
+	-- 切换动作启用状态
+	ActionSet[actionName].Disable = not ActionSet[actionName].Disable
+end
+
+local function IsActionNEnable(actionName)
+	-- 检查动作是否启用
+	return ActionSet[actionName] and not ActionSet[actionName].Disable
+end
+
+
+local function IsActionEnable(action)
+	-- 检查动作是否启用
+	return not action.Disable
+end
+
+
 local function Trigger(ply, actionName, appenddata)
 	-- 触发动作
 	-- 客户端调用执行Check, 成功后向服务器请求执行Play等
@@ -152,6 +179,11 @@ local function Trigger(ply, actionName, appenddata)
 
 	local action = GetAction(actionName)
 
+	-- 检查动作是否启用
+	if action.Disable then
+		return
+	end
+		
 	if ply.ultipar_playing and not AllowInterrupt(ply, actionName) or not action then 
 		return 
 	end
@@ -233,6 +265,9 @@ UltiPar.Trigger = Trigger
 UltiPar.Register = Register
 UltiPar.RegisterEffect = RegisterEffect
 UltiPar.AllowInterrupt = AllowInterrupt
+UltiPar.DisableAction = DisableAction
+UltiPar.IsActionNEnable = IsActionNEnable
+UltiPar.IsActionEnable = IsActionEnable
 
 if SERVER then
 	util.AddNetworkString('UltiParMoveControl')
@@ -263,6 +298,11 @@ if SERVER then
 		local checkresult = net.ReadTable()
 
 		local action = GetAction(actionName)
+
+		-- 检查动作是否启用
+		if action.Disable then
+			return
+		end
 
 		if ply.ultipar_playing and not AllowInterrupt(ply, actionName) or not action then 
 			return 
@@ -700,8 +740,9 @@ if CLIENT then
 					node.effect = k
 
 					local playButton = vgui.Create('DButton', node)
-					playButton:SetSize(36, 18)
-					playButton:SetPos(170, 0)
+					playButton:SetSize(60, 18)
+					// playButton:SetPos(170, 0)
+					playButton:Dock(RIGHT)
 					
 					playButton:SetText('')
 					playButton:SetIcon('icon16/cd_go.png')
@@ -775,10 +816,14 @@ if CLIENT then
 				tree.RefreshNode = function(self)
 					tree:Clear()
 					for k, v in pairs(UltiPar.ActionSet) do
+						local label = isstring(v.label) and v.label or k
+						local icon = IsActionNEnable(k) and (isstring(v.icon) and v.icon or 'icon32/tool.png') or 'icon16/exclamation.png'
+
 						local node = self:AddNode(
-							isstring(v.label) and v.label or k, 
-							isstring(v.icon) and v.icon or 'icon32/tool.png'
+							label, 
+							icon
 						)
+	
 						node.action = v.Name
 					end
 				end
@@ -788,6 +833,15 @@ if CLIENT then
 				RefreshButton.DoClick = function()
 					tree:RefreshNode()
 				end
+
+				local DisableButton = panel:Button('#ultipar.disable')
+				DisableButton.DoClick = function()
+					if curSelectedNode then
+						ToggleAction(curSelectedNode.action)
+					end
+					tree:RefreshNode()
+				end
+
 
 				panel:AddItem(tree)
 

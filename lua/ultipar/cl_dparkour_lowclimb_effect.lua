@@ -100,12 +100,10 @@ local effect, _ = UltiPar.RegisterEffect(
 	'DParkour-LowClimb', 
 	'default',
 	{
-		label = '#default',
-		func = VManip_mtbNTB,
+		label = '#default'
 	}
 )
 effect.func = VManip_BaiLang
-
 
 
 hook.Add('ShouldDisableLegs', 'dparkour.gmodleg', function()

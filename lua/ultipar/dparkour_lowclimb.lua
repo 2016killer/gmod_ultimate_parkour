@@ -306,7 +306,7 @@ local function DPUpWall(ply, mv, cmd)
 	end
 end
 
-local function StartDPUpWall(ply, endpos, startvel)
+local function StartDPUpWall(ply, endpos, startvel, needduck)
 	ply:SetMoveType(MOVETYPE_NOCLIP)
 
 	local dir = (endpos - ply:GetPos()):GetNormal()
@@ -325,7 +325,9 @@ local function StartDPUpWall(ply, endpos, startvel)
 		dir = dir,
 	}
 
-	UltiPar.SetMoveControl(ply, true, true, bit.bor(IN_JUMP, IN_DUCK), 0)
+	UltiPar.SetMoveControl(ply, true, true, 
+		needduck and IN_JUMP or bit.bor(IN_JUMP, IN_DUCK), 
+		needduck and IN_DUCK or 0)
 end
 
 local function DPDoubleVault(ply, mv, cmd)
@@ -353,7 +355,7 @@ local function DPDoubleVault(ply, mv, cmd)
 	end
 end
 
-local function StartDPDoubleVault(ply, endpos, endpos2, startvel, endvel2, needduck)
+local function StartDPDoubleVault(ply, endpos, endpos2, startvel, endvel2)
 	ply:SetMoveType(MOVETYPE_NOCLIP)
 
 	local plyvel = ply:GetVelocity():Length()
@@ -392,9 +394,7 @@ local function StartDPDoubleVault(ply, endpos, endpos2, startvel, endvel2, needd
 		dir2 = dir2,
 	}
 
-	UltiPar.SetMoveControl(ply, true, true, 
-		needduck and IN_JUMP or bit.bor(IN_JUMP, IN_DUCK), 
-		needduck and IN_DUCK or 0)
+	UltiPar.SetMoveControl(ply, true, true, bit.bor(IN_JUMP, IN_DUCK), 0)
 end
 
 UltiPar.StartDPVault = StartDPVault

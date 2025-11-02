@@ -20,10 +20,11 @@ local dp_los_cos = CreateConVar('dp_los_cos', '0.64', { FCVAR_ARCHIVE, FCVAR_CLI
 
 local dp_lh_keymode = CreateConVar('dp_lh_keymode', '1', { FCVAR_ARCHIVE, FCVAR_CLIENTCMD_CAN_EXECUTE, FCVAR_NOTIFY, FCVAR_SERVER_CAN_EXECUTE })
 local dp_lh_per = CreateConVar('dp_lh_per', '0.2', { FCVAR_ARCHIVE, FCVAR_CLIENTCMD_CAN_EXECUTE, FCVAR_NOTIFY, FCVAR_SERVER_CAN_EXECUTE })
-local dp_lh_max = CreateConVar('dp_lh_max', '1.2', { FCVAR_ARCHIVE, FCVAR_CLIENTCMD_CAN_EXECUTE, FCVAR_NOTIFY, FCVAR_SERVER_CAN_EXECUTE })
+local dp_lh_max = CreateConVar('dp_lh_max', '1.25', { FCVAR_ARCHIVE, FCVAR_CLIENTCMD_CAN_EXECUTE, FCVAR_NOTIFY, FCVAR_SERVER_CAN_EXECUTE })
 local dp_lh_min = CreateConVar('dp_lh_min', '0.9', { FCVAR_ARCHIVE, FCVAR_CLIENTCMD_CAN_EXECUTE, FCVAR_NOTIFY, FCVAR_SERVER_CAN_EXECUTE })
-local dp_lhv_wmax = CreateConVar('dp_lhv_wmax', '2', { FCVAR_ARCHIVE, FCVAR_CLIENTCMD_CAN_EXECUTE, FCVAR_NOTIFY, FCVAR_SERVER_CAN_EXECUTE })
-local dp_lhdv_h = CreateConVar('dp_lhdv_h', '0.85', { FCVAR_ARCHIVE, FCVAR_CLIENTCMD_CAN_EXECUTE, FCVAR_NOTIFY, FCVAR_SERVER_CAN_EXECUTE })
+local dp_lhv_wmax = CreateConVar('dp_lhv_wmax', '1.5', { FCVAR_ARCHIVE, FCVAR_CLIENTCMD_CAN_EXECUTE, FCVAR_NOTIFY, FCVAR_SERVER_CAN_EXECUTE })
+
+local dp_lc_min = CreateConVar('dp_lc_min', '0.5', { FCVAR_ARCHIVE, FCVAR_CLIENTCMD_CAN_EXECUTE, FCVAR_NOTIFY, FCVAR_SERVER_CAN_EXECUTE })
 
 local action, _ = UltiPar.Register('DParkour-HighClimb')
 if CLIENT then
@@ -52,18 +53,15 @@ if CLIENT then
 		panel:NumSlider('#dp.lhv_wmax', 'dp_lhv_wmax', 0, 3, 2)
 		panel:ControlHelp('#dp.lhv_wmax.help')
 
-		panel:NumSlider('#dp.lhdv_h', 'dp_lhdv_h', 0.85, 2, 2)
-		panel:ControlHelp('#dp.lhdv_h.help')
 		
 		local default = panel:Button('#default', '')
 		default.DoClick = function()
 			LocalPlayer():ConCommand('dp_workmode 1')
 			LocalPlayer():ConCommand('dp_los_cos 0.64')
 			LocalPlayer():ConCommand('dp_lh_per 0.2')
-			LocalPlayer():ConCommand('dp_lh_max 1.2')
+			LocalPlayer():ConCommand('dp_lh_max 1.25')
 			LocalPlayer():ConCommand('dp_lh_min 0.9')
-			LocalPlayer():ConCommand('dp_lhv_wmax 2')
-			LocalPlayer():ConCommand('dp_lhdv_h 0.85')
+			LocalPlayer():ConCommand('dp_lhv_wmax 1.5')
 		end
 	end
 end
@@ -89,14 +87,13 @@ action.Check = function(ply)
 
 	-- 我们假设玩家的碰撞盒不是悬空的也就是bmins[3] = 0
 	bmaxs[3] = lh_max
-	bmins[3] = lh_min
 
-	-- 检测障碍, 这是主要是为了检查是否对准了障碍物
+	-- 检测障碍, 高爬这边检测距离更短
 	local BlockTrace = util.TraceHull({
 		filter = ply, 
 		mask = MASK_PLAYERSOLID,
 		start = pos,
-		endpos = pos + eyeDir * plyWidth * 2,
+		endpos = pos + eyeDir * plyWidth * 0.5,
 		mins = bmins,
 		maxs = bmaxs,
 	})
@@ -244,9 +241,121 @@ end
 
 action.CheckEnd = 0.5
 
-UltiPar.StartDPVault = StartDPVault
-UltiPar.StartDPUpWall = StartDPUpWall
-UltiPar.StartDPDoubleVault = StartDPDoubleVault
+
+local function DPUpWall(ply, mv, cmd)
+	local movedata = ply.ultipar_move
+	local dt = CurTime() - movedata.starttime
+
+	if dt < 0.1 then
+		mv:SetOrigin(movedata.startpos)
+	elseif dt < 0.1 + movedata.duration then
+		dt = dt - 0.1
+		mv:SetOrigin(
+			movedata.startpos + 
+			(0.5 * movedata.acc * dt * dt + movedata.startvel * dt) * movedata.dir
+		) 
+	elseif dt >= 0.1 + movedata.duration then 
+		mv:SetOrigin(movedata.endpos)
+		ply:SetMoveType(MOVETYPE_WALK)
+		ply.ultipar_move = nil -- 移动结束, 清除移动数据
+		UltiPar.SetMoveControl(ply, false, false, 0, 0)
+	end
+end
+
+local function StartDPUpWallHigh(ply, endpos, startvel, needduck)
+	ply:SetMoveType(MOVETYPE_NOCLIP)
+
+	local dir = (endpos - ply:GetPos()):GetNormal()
+	local dis = (endpos - ply:GetPos()):Length()
+	local duration = 2 * dis / startvel
+	local acc = -startvel / duration
+
+	ply.ultipar_move = {
+		Call = DPUpWall,
+		startpos = ply:GetPos(),
+		endpos = endpos,
+		duration = duration,
+		starttime = CurTime(),
+		startvel = startvel,
+		acc = acc,
+		dir = dir,
+	}
+
+	UltiPar.SetMoveControl(ply, true, true, 
+		needduck and IN_JUMP or bit.bor(IN_JUMP, IN_DUCK), 
+		needduck and IN_DUCK or 0)
+end
+
+local function DPDoubleVault(ply, mv, cmd)
+	local movedata = ply.ultipar_move
+	local dt = CurTime() - movedata.starttime
+
+	if dt < movedata.duration then 
+		mv:SetOrigin(
+			movedata.startpos + 
+			(0.5 * movedata.acc * dt * dt + movedata.startvel * dt) * movedata.dir
+		) 
+	elseif dt < movedata.duration + movedata.duration2 then
+		dt = dt - movedata.duration
+		mv:SetOrigin(
+			movedata.endpos + 
+			(0.5 * movedata.acc2 * dt * dt + movedata.startvel2 * dt) * movedata.dir2 +
+			(0.5 * -200 / movedata.duration2 * dt * dt + 100 * dt) * unitzvec
+		) 
+	else
+		mv:SetOrigin(movedata.endpos2)
+		ply:SetMoveType(MOVETYPE_WALK)
+		mv:SetVelocity(movedata.endvel2 * movedata.dir2)
+		ply.ultipar_move = nil -- 移动结束, 清除移动数据
+		UltiPar.SetMoveControl(ply, false, false, 0, 0)
+	end
+end
+
+local function StartDPDoubleVaultHigh(ply, endpos, endpos2, startvel, endvel2)
+	ply:SetMoveType(MOVETYPE_NOCLIP)
+
+	local plyvel = ply:GetVelocity():Length()
+	endvel2 = math.max(endvel2, plyvel)
+	startvel = math.max(startvel, plyvel)
+
+	endvel2 = math.max(endvel2, startvel)
+
+	local endvel = startvel * 0.5
+	local dir = (endpos - ply:GetPos()):GetNormal()
+	local dis = (endpos - ply:GetPos()):Length()
+	local duration = 2 * dis / (endvel + startvel)
+	local acc = (endvel - startvel) / duration
+
+	local startvel2 = endvel
+	local dir2 = (endpos2 - endpos):GetNormal()
+	local dis2 = (endpos2 - endpos):Length()
+	local duration2 = 2 * dis2 / (endvel2 + startvel2)
+	local acc2 = (endvel2 - startvel2) / duration2
+
+	ply.ultipar_move = {
+		Call = DPDoubleVault,
+		startpos = ply:GetPos(),
+		starttime = CurTime(),
+		endpos = endpos,
+		endpos2 = endpos2,
+		duration = duration,
+		duration2 = duration2,
+		endvel = endvel,
+		endvel2 = endvel2 * 0.9,
+		startvel = startvel,
+		startvel2 = startvel2,
+		acc = acc,
+		acc2 = acc2,
+		dir = dir,
+		dir2 = dir2,
+	}
+
+	UltiPar.SetMoveControl(ply, true, true, bit.bor(IN_JUMP, IN_DUCK), 0)
+end
+
+
+UltiPar.StartDPUpWallHigh = StartDPUpWallHigh
+UltiPar.StartDPDoubleVaultHigh = StartDPDoubleVaultHigh
 
 action.Play = function(ply, data)
 	if CLIENT then return end
@@ -255,25 +364,20 @@ action.Play = function(ply, data)
 	// UltiPar.StartEasyMove(ply, trace.HitPos, 0.3)
 	local pmins, pmaxs = ply:GetCollisionBounds()
 	if dovault then
-		-- 触发二段翻越时, 首先触发高爬直到障碍高度为最小高度
-		-- 整体节奏是以初始速度高爬衰减到0.25倍, 再加速翻越, 最终速度将是0.7倍
-		
+		-- 高爬没有一段式翻越
 		local endvel = ply:GetJumpPower() + (ply:KeyDown(IN_SPEED) and ply:GetRunSpeed() or ply:GetWalkSpeed())
 		local plyHeight = pmaxs[3] - pmins[3]
-		if blockheight > dp_lhdv_h:GetFloat() * plyHeight then
-			local startvel = ply:GetJumpPower() + 0.25 * (ply:KeyDown(IN_SPEED) and ply:GetRunSpeed() or ply:GetWalkSpeed())
-			local endvel2 = endvel
 
-			UltiPar.StartDPDoubleVault(
-				ply, 
-				trace.HitPos - dp_lh_min:GetFloat() * plyHeight * unitzvec, 
-				dovault.HitPos, 
-				startvel, 
-				endvel2
-			)
-		else
-			UltiPar.StartDPVault(ply, dovault.HitPos, endvel)
-		end
+		local startvel = ply:GetJumpPower() + 0.25 * (ply:KeyDown(IN_SPEED) and ply:GetRunSpeed() or ply:GetWalkSpeed())
+		local endvel2 = endvel
+
+		StartDPDoubleVaultHigh(
+			ply, 
+			trace.HitPos - dp_lc_min:GetFloat() * plyHeight * unitzvec, 
+			dovault.HitPos, 
+			startvel, 
+			endvel2
+		)
 	else
 		local startvel = ply:GetJumpPower() + 0.25 * (ply:KeyDown(IN_SPEED) and ply:GetRunSpeed() or ply:GetWalkSpeed())
 		
@@ -287,7 +391,7 @@ action.Play = function(ply, data)
 			maxs = pmaxs,
 		})
 
-		UltiPar.StartDPUpWall(
+		StartDPUpWallHigh(
 			ply, 
 			endpos, 
 			startvel, 
@@ -306,7 +410,7 @@ if CLIENT then
 				return 
 			end
 		else
-			if not ply.dp_runtrigger then 
+			if not ply.dp_runtrigger_highclimb then 
 				return 
 			end
 		end
@@ -326,12 +430,12 @@ if CLIENT then
 
 
 	concommand.Add('+dp_highclimb_cl', function(ply)
-		ply.dp_runtrigger = true
+		ply.dp_runtrigger_highclimb = true
 		UltiPar.Trigger(LocalPlayer(), 'DParkour-HighClimb')
 	end)
 
 	concommand.Add('-dp_highclimb_cl', function(ply)
-		ply.dp_runtrigger = false
+		ply.dp_runtrigger_highclimb = false
 	end)
 	
 elseif SERVER then
@@ -343,7 +447,7 @@ elseif SERVER then
 				return 
 			end
 		else
-			if not ply.dp_runtrigger then 
+			if not ply.dp_runtrigger_highclimb then 
 				return 
 			end
 		end
@@ -362,12 +466,12 @@ elseif SERVER then
 	end)
 
 	concommand.Add('+dp_highclimb_sv', function(ply)
-		ply.dp_runtrigger = true
+		ply.dp_runtrigger_highclimb = true
 		UltiPar.Trigger(ply, 'DParkour-HighClimb')
 	end)
 
 	concommand.Add('-dp_highclimb_sv', function(ply)
-		ply.dp_runtrigger = false
+		ply.dp_runtrigger_highclimb = false
 	end)
 end
 
