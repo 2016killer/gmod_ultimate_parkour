@@ -45,6 +45,14 @@
 	}
 ]]--
 
+local function XYNormal(v)
+	v[3] = 0
+	v:Normalize()
+	return v
+end
+
+local unitzvec = Vector(0, 0, 1)
+
 UltiPar = UltiPar or {}
 UltiPar.ActionSet = UltiPar.ActionSet or {}
 UltiPar.MoveControl = {} -- 移动控制, 此变量不可直接修改, 使用SetMoveControl修改
@@ -235,8 +243,7 @@ local function Trigger(ply, actionName, appenddata)
 	end
 end
 
-
-UltiPar.debugwireframebox = function(pos, mins, maxs, lifetime, color, ignoreZ)
+local debugwireframebox = function(pos, mins, maxs, lifetime, color, ignoreZ)
 	lifetime = lifetime or 1
 	color = color or Color(255,255,255)
 	ignoreZ = ignoreZ or false
@@ -258,6 +265,12 @@ UltiPar.debugwireframebox = function(pos, mins, maxs, lifetime, color, ignoreZ)
 	end
 end
 
+UltiPar.CreateConVars = function(convars)
+	for _, v in ipairs(convars) do
+		CreateConVar(v.name, v.default, v.flags or { FCVAR_ARCHIVE, FCVAR_CLIENTCMD_CAN_EXECUTE, FCVAR_NOTIFY, FCVAR_SERVER_CAN_EXECUTE })
+	end
+end
+
 UltiPar.GetAction = GetAction
 UltiPar.GetCurrentEffect = GetCurrentEffect
 UltiPar.GetEffect = GetEffect
@@ -268,6 +281,101 @@ UltiPar.AllowInterrupt = AllowInterrupt
 UltiPar.DisableAction = DisableAction
 UltiPar.IsActionNEnable = IsActionNEnable
 UltiPar.IsActionEnable = IsActionEnable
+UltiPar.debugwireframebox = debugwireframebox
+UltiPar.GeneralClimbCheck = function(ply, appenddata)
+	-- 通用障碍检查
+	-- 检查前方是否有障碍并且检测是否有落脚点
+
+	-- appenddata.blen 阻碍检测的水平距离
+	-- appenddata.bmins 阻碍检测碰撞盒mins
+	-- appenddata.bmaxs 阻碍检测碰撞盒maxs
+
+	-- appenddata.ehlen 落脚点检测的水平距离
+	-- appenddata.evlen 落脚点检测的垂直距离
+	-- appenddata.loscos 视线与障碍物法线的余弦值, 用于判断是否对准了障碍物
+
+	-- {落脚点检测数据, 障碍高度}
+
+	if ply:GetMoveType() == MOVETYPE_NOCLIP or ply:InVehicle() or !ply:Alive() then 
+		return
+	end
+	
+	local eyeDir = XYNormal(ply:GetForward())
+	local pos = ply:GetPos() + unitzvec
+
+	-- 检测障碍, 这是主要是为了检查是否对准了障碍物
+	local BlockTrace = util.TraceHull({
+		filter = ply, 
+		mask = MASK_PLAYERSOLID,
+		start = pos,
+		endpos = pos + eyeDir * appenddata.blen,
+		mins = appenddata.bmins,
+		maxs = appenddata.bmaxs,
+	})
+
+	debugwireframebox(
+		BlockTrace.HitPos, 
+		appenddata.bmins, 
+		appenddata.bmaxs, 1, BlockTrace.Hit and BlockTrace.HitNormal[3] < 0.707 and Color(255, 0, 0) or Color(0, 255, 0)
+	)
+	if not BlockTrace.Hit or BlockTrace.HitNormal[3] >= 0.707 then
+		// print('非障碍')
+		return
+	end
+
+	-- 判断是否对准了障碍物
+	local temp = -Vector(BlockTrace.HitNormal)
+	temp[3] = 0
+	if temp:Dot(eyeDir) < appenddata.loscos then 
+		// print('未对准')
+		return 
+	end
+
+	-- 确保不是被玩家拿着的物品挡住了
+	if SERVER and BlockTrace.Entity:IsPlayerHolding() then
+		// print('被玩家拿着')
+		return
+	end
+	
+	-- 现在要找到落脚点并且确保落脚点有足够空间, 所以检测蹲时的碰撞盒
+	-- 假设蹲时的碰撞盒小于站立时
+	local dmins, dmaxs = ply:GetHullDuck()
+
+	-- 从碰撞点往前走一点看有没有落脚点
+	local startpos = BlockTrace.HitPos + unitzvec * appenddata.bmaxs[3] + eyeDir * appenddata.ehlen
+	local endpos = startpos - unitzvec * appenddata.evlen
+
+	local trace = util.TraceHull({
+		filter = ply, 
+		mask = MASK_PLAYERSOLID,
+		start = startpos,
+		endpos = endpos,
+		mins = dmins,
+		maxs = dmaxs,
+	})
+
+	-- 确保落脚位置不在滑坡上且在障碍物上
+	if not trace.Hit or trace.HitNormal[3] < 0.707 then
+		// print('在滑坡上或不在障碍物上')
+		return
+	end
+
+	-- 检测落脚点是否有足够空间
+	-- OK, 预留1的单位高度防止极端情况
+	if trace.StartSolid or trace.Fraction * appenddata.evlen < 1 then
+		// print('卡住了')
+		return
+	end
+	
+	// PrintTable(trace)
+	debugoverlay.Line(trace.StartPos, trace.HitPos, 1, Color(255, 255, 0))
+	debugwireframebox(trace.StartPos, dmins, dmaxs, 1, Color(0, 255, 255))
+	debugwireframebox(trace.HitPos, dmins, dmaxs, 1, Color(255, 255, 0))
+
+	trace.HitPos[3] = trace.HitPos[3] + 1
+
+	return {trace, blockheight}
+end
 
 if SERVER then
 	util.AddNetworkString('UltiParMoveControl')
@@ -393,6 +501,48 @@ if SERVER then
 		SetMoveControl(ply, true, true, removekeys or IN_JUMP, addkeys or 0)
 	end
 
+	local function SmoothMove(ply, mv, cmd)
+		-- 匀变速移动
+
+		local movedata = ply.ultipar_move
+		local dt = CurTime() - movedata.starttime
+
+		mv:SetOrigin(
+			movedata.startpos + 
+			(0.5 * movedata.acc * dt * dt + movedata.startvel * dt) * movedata.dir
+		) 
+
+		if dt >= movedata.duration then 
+			mv:SetOrigin(movedata.endpos)
+			ply:SetMoveType(MOVETYPE_WALK)
+			ply.ultipar_move = nil -- 移动结束, 清除移动数据
+			UltiPar.SetMoveControl(ply, false, false, 0, 0)
+		end
+	end
+
+	local function StartSmoothMove(ply, endpos, startvel, endvel, removekeys, addkeys)
+		ply:SetMoveType(MOVETYPE_NOCLIP)
+
+		local dir = (endpos - ply:GetPos()):GetNormal()
+		local dis = (endpos - ply:GetPos()):Length()
+		local duration = 2 * dis / (startvel + endvel)
+		local acc = (endvel - startvel) / duration
+
+		ply.ultipar_move = {
+			Call = SmoothMove,
+			starttime = CurTime(),
+			startpos = ply:GetPos(),
+			startvel = startvel,
+			endpos = endpos,
+			endvel = endvel,
+			duration = duration,
+			acc = acc,
+			dir = dir,
+		}
+
+		UltiPar.SetMoveControl(ply, true, true, removekeys or IN_JUMP, addkeys or 0)
+	end
+
 	hook.Add('SetupMove', 'ultipar.move', function(ply, mv, cmd)
 		if not ply.ultipar_move then return end
 		local call = ply.ultipar_move.Call
@@ -460,7 +610,7 @@ if SERVER then
 
 	UltiPar.SetMoveControl = SetMoveControl
 	UltiPar.StartEasyMove = StartEasyMove
-	
+	UltiPar.StartSmoothMove = StartSmoothMove
 	concommand.Add('up_clear', Clear)
 
 elseif CLIENT then
@@ -700,6 +850,61 @@ if CLIENT then
 	local white = Color(255, 255, 255)
 	local function drawwhite(self, w, h)
 		draw.RoundedBox(0, 0, 0, w, h, white)
+	end
+
+	local function GetConVarPhrase(name)
+		-- 替换第一个下划线为点号
+		local start, ending, phrase = string.find(name, "_", 1)
+
+		if start == nil then
+			return name
+		else
+			return '#' .. name:sub(1, start - 1) .. '.' .. name:sub(ending + 1)
+		end
+	end
+
+	UltiPar.CreateConVarMenu = function(panel, convars)
+		for _, v in ipairs(convars) do
+			local name = v.name
+			local widget = v.widget or 'NumSlider'
+			local default = v.default or '0'
+			local label = v.label or GetConVarPhrase(name)
+	
+			if widget == 'NumSlider' then
+				panel:NumSlider(
+					label, 
+					name, 
+					v.min or 0, v.max or 1, 
+					v.decimals or 2
+				)
+			elseif widget == 'CheckBox' then
+				panel:CheckBox(label, name)
+			elseif widget == 'ComboBox' then
+				panel:ComboBox(
+					label, 
+					name, 
+					v.choices or {}
+				)
+			elseif widget == 'TextEntry' then
+				panel:TextEntry(label, name)
+			end
+
+			if v.help then
+				if isstring(v.help) then
+					panel:ControlHelp(v.help)
+				else
+					panel:ControlHelp(label .. '.' .. 'help')
+				end
+			end
+		end
+		
+		local defaultButton = panel:Button('#default')
+		
+		defaultButton.DoClick = function()
+			for _, v in ipairs(convars) do
+				RunConsoleCommand(v.name, v.default or '0')
+			end
+		end
 	end
 
 	-- UI界面
