@@ -59,6 +59,43 @@ local convars = {
 		max = 0.85,
 		decimals = 2,
 	},
+
+	{
+		name = 'dp_lc_vault',
+		default = '1',
+		widget = 'CheckBox'
+	},
+
+	{
+		name = 'dp_lc_vault_vlen',
+		default = '0.6',
+		widget = 'NumSlider',
+		min = 0.25,
+		max = 0.6,
+		decimals = 2,
+		help = true,
+	},
+
+	{
+		name = 'dp_lc_vault_min',
+		default = '0.25',
+		widget = 'NumSlider',
+		min = 0.25,
+		max = 0.5,
+		decimals = 2,
+		help = true,
+	},
+
+	{
+		name = 'dp_lc_vault_hlen',
+		default = '2',
+		widget = 'NumSlider',
+		min = 0,
+		max = 3,
+		decimals = 2,
+		help = true,
+	}
+
 }
 
 UltiPar.CreateConVars(convars)
@@ -69,6 +106,10 @@ local dp_lc_per = GetConVar('dp_lc_per')
 local dp_lc_min = GetConVar('dp_lc_min')
 local dp_lc_max = GetConVar('dp_lc_max')
 
+local dp_lc_vault = GetConVar('dp_lc_vault')
+local dp_lc_vault_vlen = GetConVar('dp_lc_vault_vlen')
+local dp_lc_vault_min = GetConVar('dp_lc_vault_min')
+local dp_lc_vault_hlen = GetConVar('dp_lc_vault_hlen')
 
 
 local action, _ = UltiPar.Register('DParkour-LowClimb')
@@ -100,7 +141,7 @@ action.Check = function(ply)
 	bmaxs[3] = blockHeightMax
 	bmins[3] = blockHeightMin
 
-	return GeneralClimbCheck(ply, {
+	local landdata = GeneralClimbCheck(ply, {
 		blen = 2 * plyWidth,
 		ehlen = 0.5 * plyWidth,
 		evlen = blockHeightMax - blockHeightMin,
@@ -108,93 +149,23 @@ action.Check = function(ply)
 		bmaxs = bmaxs,
 		loscos = dp_los_cos:GetFloat(),
 	})
-// if ply:KeyDown(IN_FORWARD) and not ply:KeyDown(IN_DUCK) then
-// 		-- 翻越不需要检查落脚点是否在斜坡上
-	
-// 		-- lhv_wmax 是最大翻越宽度
-// 		local lhv_wmax = dp_lhv_wmax:GetFloat() * plyWidth
-// 		local maxVaultWidthVec = eyeDir * lhv_wmax
 
-// 		-- 简单检测一下是否会被阻挡
-// 		local linelen = (lhv_wmax + 0.707 * plyWidth)
-// 		local line = eyeDir * linelen
-		
-// 		local simpletrace1 = util.QuickTrace(trace.HitPos + unitzvec * dmaxs[3], line, ply)
-// 		local simpletrace2 = util.QuickTrace(trace.HitPos + unitzvec * (dmaxs[3] * 0.5), line, ply)
-		
-// 		if simpletrace1.StartSolid or simpletrace2.StartSolid then
-// 			// print('卡住了')
-// 			return {trace, false, blockheight}
-// 		end
+	if landdata then
+		local plyWidth = math.max(bmaxs[1] - bmins[1], bmaxs[2] - bmins[2])
 
-// 		if simpletrace1.Hit or simpletrace2.Hit then
-// 			maxVaultWidthVec = eyeDir * math.max(
-// 				0, 
-// 				linelen * math.min(simpletrace1.Fraction, simpletrace2.Fraction) - plyWidth * 0.707
-// 			)
-// 		end
-// 		debugoverlay.Line(simpletrace1.StartPos, simpletrace1.HitPos, 1, Color(0, 0, 255))
-// 		debugoverlay.Line(simpletrace2.StartPos, simpletrace2.HitPos, 1, Color(0, 0, 255))
+		local vaultdata = UltiPar.GeneralVaultCheck(ply, {
+			hlen = dp_lc_vault_hlen:GetFloat() * plyWidth,
+			vlen = dp_lc_vault_vlen:GetFloat() * plyHeight,
+			landdata = landdata,
+		})
 
+		if vaultdata == nil then
+			return {landdata[1].HitPos, landdata[2]}
+		else
 
-// 		-- 检查凹陷是否符合条件 
-// 		startpos = trace.HitPos + maxVaultWidthVec
-// 		endpos = startpos - unitzvec * blockheight
-
-// 		local vchecktrace = util.TraceHull({
-// 			filter = ply, 
-// 			mask = MASK_PLAYERSOLID,
-// 			start = startpos,
-// 			endpos = endpos,
-// 			mins = dmins,
-// 			maxs = dmaxs,
-// 		})
-
-// 		debugoverlay.Line(vchecktrace.StartPos, vchecktrace.HitPos, 1, Color(0, 0, 255))
-// 		debugwireframebox(vchecktrace.HitPos, dmins, dmaxs, 1, Color(0, 0, 255))
-
-
-// 		if vchecktrace.StartSolid then
-// 			// print('翻越高度检测, 卡住了')
-// 			return {trace, false, blockheight}
-// 		end
-
-// 		// print(vchecktrace.Fraction * blockheight, math.min(lh_min, 0.2 * plyHeight))
-// 		if vchecktrace.Fraction * blockheight < math.min(lh_min, 0.2 * plyHeight) then
-// 			// print('凹陷程度不足')
-// 			return {trace, false, blockheight}
-// 		end
-
-// 		debugoverlay.Line(vchecktrace.StartPos, vchecktrace.HitPos, 0.5, Color(0, 0, 255))
-// 		debugwireframebox(vchecktrace.HitPos, dmins, dmaxs, 0.5, Color(0, 0, 255))
-
-// 		local pmins, pmaxs = ply:GetCollisionBounds()
-
-// 		startpos = vchecktrace.HitPos + unitzvec
-// 		endpos = startpos - maxVaultWidthVec
-// 		hchecktrace = util.TraceHull({
-// 			filter = ply, 
-// 			mask = MASK_PLAYERSOLID,
-// 			start = startpos,
-// 			endpos = endpos,
-// 			mins = pmins,
-// 			maxs = pmaxs,
-// 		})
-
-// 		if hchecktrace.HitPos:Distance2DSqr(trace.HitPos) > lhv_wmax * lhv_wmax then
-// 			// print('翻越宽度不符合')
-// 			return {trace, false, blockheight}
-// 		end
-
-// 		debugoverlay.Line(hchecktrace.StartPos, hchecktrace.HitPos, 0.5, Color(0, 0, 0))
-// 		debugwireframebox(hchecktrace.HitPos, pmins, pmaxs, 0.5, Color(0, 0, 0))
-
-// 		hchecktrace.HitPos = hchecktrace.HitPos + eyeDir * math.min(5, hchecktrace.Fraction * lhv_wmax)
-
-// 		return {trace, hchecktrace, blockheight}
-// 	else
-// 		return {trace, false, blockheight}
-// 	end
+			return {landdata[1].HitPos, landdata[2], vaultdata[1].HitPos, vaultdata[2]}
+		end
+	end
 
 end
 
@@ -202,51 +173,80 @@ action.CheckEnd = 0.5
 
 action.Play = function(ply, data)
 	if CLIENT or data == nil then return end
-	local trace, blockheight = unpack(data)
+	local landpos, blockheight, vaultpos, blockheightMirror = unpack(data)
 
-	-- 检测一下落脚点能否站立
-	local endpos = trace.HitPos
-	local pmins, pmaxs = ply:GetHull()
-	local spacecheck = util.TraceHull({
-		filter = ply, 
-		mask = MASK_PLAYERSOLID,
-		start = endpos,
-		endpos = endpos,
-		mins = pmins,
-		maxs = pmaxs,
-	})
+	if not vaultpos then
+		-- 检测一下落脚点能否站立
+		local endpos = landpos
+		local needduck = UltiPar.GeneralLandSpaceCheck(ply, endpos)
 
-	-- 如果不能站立, 则需要蹲
-	local needduck = spacecheck.Hit or spacecheck.StartSolid
+		-- 移动的初始速度由玩家移动能力和跳跃能力决定
+		local startvel = ply:GetJumpPower() + 0.25 * (ply:KeyDown(IN_SPEED) and ply:GetRunSpeed() or ply:GetWalkSpeed())
+			startvel = math.max(ply:GetVelocity():Length(), startvel)
+		
+		UltiPar.StartSmoothMove(
+			ply, 
+			endpos, 
+			startvel,
+			0,
+			needduck and IN_JUMP or bit.bor(IN_JUMP, IN_DUCK), 
+			needduck and IN_DUCK or 0
+		)
+	else
+		local endpos = vaultpos
 
-	-- 移动的初始速度由玩家移动能力和跳跃能力决定
-	local startvel = ply:GetJumpPower() + 0.25 * (ply:KeyDown(IN_SPEED) and ply:GetRunSpeed() or ply:GetWalkSpeed())
-		startvel = math.max(ply:GetVelocity():Length(), startvel)
-	
-	UltiPar.StartSmoothMove(
-		ply, 
-		endpos, 
-		startvel,
-		0,
-		needduck and IN_JUMP or bit.bor(IN_JUMP, IN_DUCK), 
-		needduck and IN_DUCK or 0
-	)
+		-- 移动的最终速度由玩家移动能力和跳跃能力决定
+		local startvel = ply:GetVelocity():Length()
+		local endvel = ply:GetJumpPower() + (ply:KeyDown(IN_SPEED) and ply:GetRunSpeed() or ply:GetWalkSpeed())
+			endvel = math.max(startvel, endvel)
+		
+		UltiPar.StartSmoothVault(
+			ply, 
+			endpos, 
+			startvel,
+			endvel,
+			bit.bor(IN_JUMP, IN_DUCK), 
+			0
+		)
+	end
 end
 
 local function effectfunc_default(ply, data)
-	if SERVER then return end
-
 	if data == nil then
 		-- 演示模式
-		UltiPar.SetVecPunchVel(Vector(0, 0, 25))
-		UltiPar.SetAngPunchVel(Vector(0, 0, -50))
-		VManip:PlayAnim('vault')
-		surface.PlaySound('dparkour/bailang/lowclimb.mp3')
+		if SERVER then
+			-- 防止CalcView不兼容, 还是用ViewPunch吧
+			ply:ViewPunch(Angle(0, 0, -8))
+		elseif CLIENT then
+			UltiPar.SetVecPunchVel(Vector(100, 0, -10))
+			// UltiPar.SetAngPunchVel(Vector(0, 0, -50))
+			VManip:PlayAnim('vault')
+			VMLegs:PlayAnim('dp_lazy_BaiLang')
+			surface.PlaySound('dparkour/bailang/vault.mp3')
+		end
 	else
-		UltiPar.SetVecPunchVel(Vector(0, 0, 25))
-		UltiPar.SetAngPunchVel(Vector(0, 0, -50))
-		VManip:PlayAnim('vault')
-		surface.PlaySound('dparkour/bailang/lowclimb.mp3')
+		local landpos, blockheight, vaultpos, blockheightMirror = unpack(data)
+		if SERVER then
+			-- 防止CalcView不兼容, 还是用ViewPunch吧
+			if not vaultpos then
+				ply:ViewPunch(Angle(0, 0, -5))
+			else
+				ply:ViewPunch(Angle(0, 0, -8))
+			end
+		elseif CLIENT then
+			if not vaultpos then
+				UltiPar.SetVecPunchVel(Vector(0, 0, 25))
+				// UltiPar.SetAngPunchVel(Vector(0, 0, -50))
+				VManip:PlayAnim('vault')
+				surface.PlaySound('dparkour/bailang/lowclimb.mp3')
+			else
+				UltiPar.SetVecPunchVel(Vector(100, 0, -10))
+				// UltiPar.SetAngPunchVel(Vector(0, 0, -50))
+				VManip:PlayAnim('vault')
+				VMLegs:PlayAnim('dp_lazy_BaiLang')
+				surface.PlaySound('dparkour/bailang/vault.mp3')
+			end
+		end
 	end
 end
 

@@ -68,10 +68,10 @@ local convars = {
 
 	{
 		name = 'dp_lh_vault_vlen',
-		default = '0.5',
+		default = '0.6',
 		widget = 'NumSlider',
 		min = 0.25,
-		max = 0.5,
+		max = 0.6,
 		decimals = 2,
 		help = true,
 	},
@@ -152,18 +152,7 @@ action.Play = function(ply, data)
 
 	-- 检测一下落脚点能否站立
 	local endpos = trace.HitPos
-	local pmins, pmaxs = ply:GetHull()
-	local spacecheck = util.TraceHull({
-		filter = ply, 
-		mask = MASK_PLAYERSOLID,
-		start = endpos,
-		endpos = endpos,
-		mins = pmins,
-		maxs = pmaxs,
-	})
-
-	-- 如果不能站立, 则需要蹲
-	local needduck = spacecheck.Hit or spacecheck.StartSolid
+	local needduck = UltiPar.GeneralLandSpaceCheck(ply, endpos)
 
 	-- 移动的初始速度由玩家移动能力和跳跃能力决定
 	local startvel = ply:GetJumpPower() + 0.25 * (ply:KeyDown(IN_SPEED) and ply:GetRunSpeed() or ply:GetWalkSpeed())
@@ -172,7 +161,7 @@ action.Play = function(ply, data)
 	UltiPar.StartEasyMove(
 		ply, 
 		ply:GetPos(), 
-		0.1, 
+		0.5, 
 		needduck and IN_JUMP or bit.bor(IN_JUMP, IN_DUCK), 
 		needduck and IN_DUCK or 0
 	)
@@ -189,19 +178,39 @@ action.Play = function(ply, data)
 end
 
 local function effectfunc_default(ply, data)
-	if SERVER then return end
-
 	if data == nil then
 		-- 演示模式
-		UltiPar.SetVecPunchVel(Vector(0, 0, 25))
-		UltiPar.SetAngPunchVel(Vector(0, 0, -50))
-		VManip:PlayAnim('vault')
-		surface.PlaySound('dparkour/bailang/highclimb.mp3')
+		if SERVER then
+			-- 防止CalcView不兼容, 还是用ViewPunch吧
+			ply:ViewPunch(Angle(-20, 5, 0))
+			timer.Simple(0.2, function()
+				ply:ViewPunch(Angle(20, 0, 0))
+			end)
+		elseif CLIENT then
+			timer.Simple(0.2, function()
+				UltiPar.SetVecPunchVel(Vector(0, 0, 25))
+			end)
+			// UltiPar.SetAngPunchVel(Vector(0, 0, -50))
+
+			VManip:PlayAnim('dp_catch_BaiLang')
+			surface.PlaySound('dparkour/bailang/highclimb.mp3')
+		end
 	else
-		UltiPar.SetVecPunchVel(Vector(0, 0, 25))
-		UltiPar.SetAngPunchVel(Vector(0, 0, -50))
-		VManip:PlayAnim('vault')
-		surface.PlaySound('dparkour/bailang/highclimb.mp3')
+		if SERVER then
+			-- 防止CalcView不兼容, 还是用ViewPunch吧
+			ply:ViewPunch(Angle(-20, 5, 0))
+			timer.Simple(0.2, function()
+				ply:ViewPunch(Angle(20, 0, 0))
+			end)
+		elseif CLIENT then
+			timer.Simple(0.2, function()
+				UltiPar.SetVecPunchVel(Vector(0, 0, 25))
+			end)
+			// UltiPar.SetAngPunchVel(Vector(0, 0, -50))
+			
+			VManip:PlayAnim('dp_catch_BaiLang')
+			surface.PlaySound('dparkour/bailang/highclimb.mp3')
+		end
 	end
 end
 
@@ -214,24 +223,6 @@ local effect, _ = UltiPar.RegisterEffect(
 )
 effect.func = effectfunc_default
 
-local function effectfunc_VManip_mtbNTB(ply, data)
-	if SERVER then return end
-	if data == nil then
-		UltiPar.SetVecPunchVel(Vector(50, 0, -10))
-		UltiPar.SetAngPunchVel(Vector(0, 0, -50))
-		VManip:PlayAnim('vault')
-		surface.PlaySound('dparkour/mtbntb/highclimb.mp3')
-	end
-end
-
-UltiPar.RegisterEffect(
-	'DParkour-HighClimb', 
-	'VManip-mtbNTB',
-	{
-		label = '#dp.effect.VManip_mtbNTB',
-		func = effectfunc_VManip_mtbNTB,
-	}
-)
 
 if CLIENT then
 	local triggertime = 0
