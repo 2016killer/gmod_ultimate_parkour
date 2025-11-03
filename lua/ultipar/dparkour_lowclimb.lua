@@ -231,7 +231,6 @@ action.Play = function(ply, data)
 		if action.IsDoubleVault(ply, blockheightVault) then
 			-- 二段翻越, 最终速度衰减到0.8倍, 过渡速度为0.2倍
 			local startvel, endvel, middlevel = action.VaultSpeed(ply, ply:GetVelocity():Length(), true)
-			print(startvel, middlevel, endvel)
 
 			local middlepos = landpos
 			middlepos[3] = endpos[3]
