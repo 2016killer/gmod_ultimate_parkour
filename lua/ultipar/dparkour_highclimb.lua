@@ -373,6 +373,7 @@ UltiPar.RegisterEffect(
 
 if CLIENT then
 	local triggertime = 0
+	local Trigger = UltiPar.Trigger
 	hook.Add('Think', 'dparkour.highclimb.trigger', function()
 		local ply = LocalPlayer()
 		if dp_workmode:GetBool() then return end
@@ -390,19 +391,19 @@ if CLIENT then
 		if curtime - triggertime < dp_lh_per:GetFloat() then return end
 		triggertime = curtime
 
-		UltiPar.Trigger(LocalPlayer(), 'DParkour-HighClimb')
+		Trigger(LocalPlayer(), 'DParkour-HighClimb')
 	end)
 
 	hook.Add('KeyPress', 'dparkour.highclimb.trigger', function(ply, key)
 		if key == IN_JUMP and dp_lh_keymode:GetBool() and not dp_workmode:GetBool() then 
-			UltiPar.Trigger(ply, 'DParkour-HighClimb') 
+			Trigger(ply, 'DParkour-HighClimb') 
 		end
 	end)
 
 
 	concommand.Add('+dp_highclimb_cl', function(ply)
 		ply.dp_runtrigger_highclimb = true
-		UltiPar.Trigger(LocalPlayer(), 'DParkour-HighClimb')
+		Trigger(LocalPlayer(), 'DParkour-HighClimb')
 	end)
 
 	concommand.Add('-dp_highclimb_cl', function(ply)
@@ -414,6 +415,7 @@ if CLIENT then
 	end)
 elseif SERVER then
 	local triggertime = 0
+	local Trigger = UltiPar.Trigger
 	hook.Add('PlayerPostThink', 'dparkour.highclimb.trigger', function(ply)
 		if not dp_workmode:GetBool() then return end
 		if dp_lh_keymode:GetBool() then 
@@ -430,18 +432,18 @@ elseif SERVER then
 		if curtime - triggertime < dp_lh_per:GetFloat() then return end
 		triggertime = curtime
 
-		UltiPar.Trigger(ply, 'DParkour-HighClimb')
+		Trigger(ply, 'DParkour-HighClimb')
 	end)
 
 	hook.Add('KeyPress', 'dparkour.highclimb.trigger', function(ply, key)
 		if key == IN_JUMP and dp_lh_keymode:GetBool() and dp_workmode:GetBool() then 
-			UltiPar.Trigger(ply, 'DParkour-HighClimb') 
+			Trigger(ply, 'DParkour-HighClimb') 
 		end
 	end)
 
 	concommand.Add('+dp_highclimb_sv', function(ply)
 		ply.dp_runtrigger_highclimb = true
-		UltiPar.Trigger(ply, 'DParkour-HighClimb')
+		Trigger(ply, 'DParkour-HighClimb')
 	end)
 
 	concommand.Add('-dp_highclimb_sv', function(ply)
