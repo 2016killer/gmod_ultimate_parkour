@@ -342,6 +342,15 @@ local effect, _ = UltiPar.RegisterEffect(
 )
 effect.func = effectfunc_default
 
+UltiPar.RegisterEffect(
+	'DParkour-LowClimb', 
+	'VManip-白狼',
+	{
+		label = '#dp.effect.VManip_BaiLang',
+		func = effectfunc_default
+	}
+)
+
 
 if CLIENT then
 	local triggertime = 0
