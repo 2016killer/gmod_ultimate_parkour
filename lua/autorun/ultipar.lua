@@ -55,9 +55,10 @@ local unitzvec = Vector(0, 0, 1)
 
 UltiPar = UltiPar or {}
 UltiPar.ActionSet = UltiPar.ActionSet or {}
+UltiPar.DisabledSet = UltiPar.DisabledSet or {}
 UltiPar.MoveControl = {} -- 移动控制, 此变量不可直接修改, 使用SetMoveControl修改
 
-
+local DisabledSet = UltiPar.DisabledSet
 local ActionSet = UltiPar.ActionSet
 
 local function GetAction(actionName)
@@ -153,44 +154,32 @@ local function AllowInterrupt(ply, actionName)
 	return action and action.Interrupts[actionName] ~= nil
 end
 
-local function DisableAction(actionName)
-	-- 禁用动作
-	ActionSet[actionName].Disable = true
+local function SetActionDisable(actionName, disable)
+	-- 设置动作是否禁用
+	DisabledSet[actionName] = disable
 end
 
-local function EnableAction(actionName)
-	-- 启用动作
-	ActionSet[actionName].Disable = false
+local function ToggleActionDisable(actionName)
+	-- 切换动作禁用状态
+	DisabledSet[actionName] = !DisabledSet[actionName]
 end
 
-local function ToggleAction(actionName)
-	-- 切换动作启用状态
-	ActionSet[actionName].Disable = not ActionSet[actionName].Disable
-end
-
-local function IsActionNEnable(actionName)
+local function IsActionDisable(actionName)
 	-- 检查动作是否启用
-	return ActionSet[actionName] and not ActionSet[actionName].Disable
+	return DisabledSet[actionName]
 end
-
-
-local function IsActionEnable(action)
-	-- 检查动作是否启用
-	return not action.Disable
-end
-
 
 local function Trigger(ply, actionName, appenddata)
 	-- 触发动作
 	-- 客户端调用执行Check, 成功后向服务器请求执行Play等
 	-- 服务器调用执行Check, 成功后执行Play等并通知客户端执行Play等
 
-	local action = GetAction(actionName)
-
-	-- 检查动作是否启用
-	if action.Disable then
+	-- 检查动作是否禁用
+	if IsActionDisable(actionName) then
 		return
 	end
+
+	local action = GetAction(actionName)
 		
 	if ply.ultipar_playing and not AllowInterrupt(ply, actionName) or not action then 
 		return 
@@ -278,9 +267,8 @@ UltiPar.Trigger = Trigger
 UltiPar.Register = Register
 UltiPar.RegisterEffect = RegisterEffect
 UltiPar.AllowInterrupt = AllowInterrupt
-UltiPar.DisableAction = DisableAction
-UltiPar.IsActionNEnable = IsActionNEnable
-UltiPar.IsActionEnable = IsActionEnable
+UltiPar.SetActionDisable = SetActionDisable
+UltiPar.IsActionDisable = IsActionDisable
 UltiPar.debugwireframebox = debugwireframebox
 UltiPar.GeneralClimbCheck = function(ply, appenddata)
 	-- 通用障碍检查
@@ -530,12 +518,12 @@ if SERVER then
 		local actionName = net.ReadString()
 		local checkresult = net.ReadTable()
 
-		local action = GetAction(actionName)
-
-		-- 检查动作是否启用
-		if action.Disable then
+		-- 检查动作是否禁用
+		if IsActionDisable(actionName) then
 			return
 		end
+
+		local action = GetAction(actionName)
 
 		if ply.ultipar_playing and not AllowInterrupt(ply, actionName) or not action then 
 			return 
@@ -1269,35 +1257,50 @@ if CLIENT then
 					tree:Clear()
 					for k, v in pairs(UltiPar.ActionSet) do
 						local label = isstring(v.label) and v.label or k
-						local icon = IsActionNEnable(k) and (isstring(v.icon) and v.icon or 'icon32/tool.png') or 'icon16/exclamation.png'
+						local icon = isstring(v.icon) and v.icon or 'icon32/tool.png'
 
-						local node = self:AddNode(
-							label, 
-							icon
-						)
-	
+						local node = self:AddNode(label, icon)
 						node.action = v.Name
+
+						local disableButton = vgui.Create('DButton', node)
+						disableButton:SetSize(20, 18)
+						disableButton:Dock(RIGHT)
+						
+						disableButton:SetText('')
+						disableButton:SetIcon(IsActionDisable(k) and 'icon16/delete.png' or 'icon16/accept.png')
+						
+						disableButton.DoClick = function()
+							ToggleActionDisable(k)
+							disableButton:SetIcon(IsActionDisable(k) and 'icon16/delete.png' or 'icon16/accept.png')
+						end
+
+						local editButton = vgui.Create('DButton', node)
+						editButton:SetSize(20, 18)
+						editButton:Dock(RIGHT)
+						
+						editButton:SetText('')
+						editButton:SetIcon('icon16/application_edit.png')
+						
+						editButton.DoClick = function()
+							UltiPar.CreateActionEditor(node.action)
+						end
 					end
 				end
-				tree:RefreshNode()
-
-				local RefreshButton = panel:Button('#ultipar.refresh')
-				RefreshButton.DoClick = function()
-					tree:RefreshNode()
-				end
-
-				local DisableButton = panel:Button('#ultipar.disable')
-				DisableButton.DoClick = function()
-					if curSelectedNode then
-						ToggleAction(curSelectedNode.action)
-					end
-					tree:RefreshNode()
-				end
-
 
 				panel:AddItem(tree)
 
+				local LoadButton = panel:Button('#ultipar.load')
+				LoadButton.DoClick = function()
+					UltiPar.ReadActionDisable()
+				end
+
+				local SaveButton = panel:Button('#ultipar.save')
+				SaveButton.DoClick = function()
+					UltiPar.WriteActionDisable(DisabledSet)
+				end
+
 				UltiPar.ActionManager = tree
+				UltiPar.ReadActionDisable()
 			end)
 	end)
 end
