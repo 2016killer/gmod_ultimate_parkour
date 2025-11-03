@@ -4,7 +4,6 @@
 ]]--
 
 -- ==================== 高爬动作 ===============
-local debugwireframebox = UltiPar.debugwireframebox
 
 ---------------------- 菜单 ----------------------
 local convars = {
@@ -22,6 +21,13 @@ local convars = {
 		min = 0,
 		max = 1,
 		decimals = 2,
+		help = true,
+	},
+
+	{
+		name = 'dp_falldamage',
+		default = '1',
+		widget = 'CheckBox',
 		help = true,
 	},
 
@@ -100,6 +106,7 @@ local convars = {
 UltiPar.CreateConVars(convars)
 local dp_workmode = GetConVar('dp_workmode')
 local dp_los_cos = GetConVar('dp_los_cos')
+local dp_falldamage = GetConVar('dp_falldamage')
 local dp_lh_keymode = GetConVar('dp_lh_keymode')
 local dp_lh_per = GetConVar('dp_lh_per')
 local dp_lh_min = GetConVar('dp_lh_min')
@@ -133,7 +140,7 @@ action.ClimbSpeed = function(ply, ref)
 	-- 返回爬楼初始速度、结束速度
 	return math.max(
 			ply:GetJumpPower() + 0.25 * (ply:KeyDown(IN_SPEED) and ply:GetRunSpeed() or ply:GetWalkSpeed()), 
-			ref
+			ref[3]
 		),
 		0
 end
@@ -145,10 +152,15 @@ action.VaultSpeed = function(ply, ref, isdouble)
 		local _, endvel = action.VaultSpeed(ply, ref, false)
 		return startvel, endvel * 0.7, startvel * 0.2
 	else
-		return ref,
+		local vaultDir = ply:EyeAngles():Forward()
+		vaultDir[3] = 0
+
+		local startvel = ref:Dot(vaultDir)
+
+		return startvel,
 			math.max(
 				ply:GetJumpPower() + (ply:KeyDown(IN_SPEED) and ply:GetRunSpeed() or ply:GetWalkSpeed()),
-				ref
+				startvel
 			)
 	end
 end
@@ -212,13 +224,30 @@ action.Play = function(ply, data)
 	if CLIENT or data == nil then return end
 	local _, landpos, blockheight, vaultpos, blockheightVault = unpack(data)
 
+	-- 检测摔落伤害
+	if dp_falldamage:GetBool() then
+		local fallspeed = ply:GetVelocity()[3]
+		if fallspeed < -600 then
+			local damage = hook.Run('GetFallDamage', ply, fallspeed) or 0
+			if damage > 0 then
+				local d = DamageInfo()
+				d:SetDamage(damage)
+				d:SetAttacker(Entity(0))
+				d:SetDamageType(DMG_FALL) 
+
+				ply:TakeDamageInfo(d)
+				ply:EmitSound('Player.FallDamage', 100, 100)	
+			end 
+		end
+	end
+
 	if not vaultpos or not action.IsDoubleVault(ply, blockheightVault) then
 		-- 检测一下落脚点能否站立
 		local endpos = landpos
 		local needduck = UltiPar.GeneralLandSpaceCheck(ply, endpos)
 
 		-- 移动的初始速度由玩家移动能力和跳跃能力决定
-		local startvel, endvel = action.ClimbSpeed(ply, ply:GetVelocity():Length())
+		local startvel, endvel = action.ClimbSpeed(ply, ply:GetVelocity())
 		
 		UltiPar.StartEasyMove(
 			ply, 
@@ -244,7 +273,7 @@ action.Play = function(ply, data)
 		local endpos = vaultpos
 
 		-- 二段翻越, 最终速度衰减到0.7倍, 过渡速度为0.2倍
-		local startvel, endvel, middlevel = action.VaultSpeed(ply, ply:GetVelocity():Length(), true)
+		local startvel, endvel, middlevel = action.VaultSpeed(ply, ply:GetVelocity(), true)
 		// print(startvel, middlevel, endvel)
 
 		local middlepos = landpos
@@ -311,7 +340,7 @@ local function effectfunc_default(ply, data)
 			if vaultpos and action.IsDoubleVault(ply, blockheightVault) then
 				local middlepos = landpos
 				middlepos[3] = vaultpos[3]
-				local duration = 2 * (middlepos:Distance(pos)) / (1.2 * action.ClimbSpeed(ply, ply:GetVelocity():Length()))
+				local duration = 2 * (middlepos:Distance(pos)) / (1.2 * action.ClimbSpeed(ply, ply:GetVelocity()))
 				
 				timer.Simple(0.2 + math.max(0.2, duration), function()
 					UltiPar.SetVecPunchVel(Vector(100, 0, -10))
@@ -336,9 +365,9 @@ effect.func = effectfunc_default
 
 UltiPar.RegisterEffect(
 	'DParkour-HighClimb', 
-	'VManip-白狼',
+	'SP-VManip-白狼',
 	{
-		label = '#dp.effect.VManip_BaiLang',
+		label = '#dp.effect.SP_VManip_BaiLang',
 		func = effectfunc_default
 	}
 )

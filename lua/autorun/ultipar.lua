@@ -301,11 +301,11 @@ UltiPar.GeneralClimbCheck = function(ply, appenddata)
 		maxs = appenddata.bmaxs,
 	})
 
-	debugwireframebox(
-		BlockTrace.HitPos, 
-		appenddata.bmins, 
-		appenddata.bmaxs, 1, BlockTrace.Hit and BlockTrace.HitNormal[3] < 0.707 and Color(255, 0, 0) or Color(0, 255, 0)
-	)
+	// debugwireframebox(
+	// 	BlockTrace.HitPos, 
+	// 	appenddata.bmins, 
+	// 	appenddata.bmaxs, 1, BlockTrace.Hit and BlockTrace.HitNormal[3] < 0.707 and Color(255, 0, 0) or Color(0, 255, 0)
+	// )
 	if not BlockTrace.Hit or BlockTrace.HitNormal[3] >= 0.707 then
 		// print('非障碍')
 		return
@@ -356,12 +356,13 @@ UltiPar.GeneralClimbCheck = function(ply, appenddata)
 	end
 	
 	// PrintTable(trace)
-	debugoverlay.Line(trace.StartPos, trace.HitPos, 1, Color(255, 255, 0))
-	debugwireframebox(trace.StartPos, dmins, dmaxs, 1, Color(0, 255, 255))
-	debugwireframebox(trace.HitPos, dmins, dmaxs, 1, Color(255, 255, 0))
+	// debugoverlay.Line(trace.StartPos, trace.HitPos, 1, Color(255, 255, 0))
+	// debugwireframebox(trace.StartPos, dmins, dmaxs, 1, Color(0, 255, 255))
+	// debugwireframebox(trace.HitPos, dmins, dmaxs, 1, Color(255, 255, 0))
 
 	trace.HitPos[3] = trace.HitPos[3] + 1
 
+	// print(trace.HitPos[3] - pos[3])
 	return {
 		pos,
 		trace.HitPos, 
@@ -415,8 +416,8 @@ UltiPar.GeneralVaultCheck = function(ply, appenddata)
 	local simpletrace1 = util.QuickTrace(landdata[2] + unitzvec * dmaxs[3], line, ply)
 	local simpletrace2 = util.QuickTrace(landdata[2] + unitzvec * (dmaxs[3] * 0.5), line, ply)
 	
-	debugoverlay.Line(simpletrace1.StartPos, simpletrace1.HitPos, 1, Color(0, 0, 255))
-	debugoverlay.Line(simpletrace2.StartPos, simpletrace2.HitPos, 1, Color(0, 0, 255))
+	// debugoverlay.Line(simpletrace1.StartPos, simpletrace1.HitPos, 1, Color(0, 0, 255))
+	// debugoverlay.Line(simpletrace2.StartPos, simpletrace2.HitPos, 1, Color(0, 0, 255))
 
 	if simpletrace1.StartSolid or simpletrace2.StartSolid then
 		// print('卡住了')
@@ -449,8 +450,8 @@ UltiPar.GeneralVaultCheck = function(ply, appenddata)
 		maxs = dmaxs,
 	})
 
-	debugoverlay.Line(vchecktrace.StartPos, vchecktrace.HitPos, 1, Color(0, 0, 255))
-	debugwireframebox(vchecktrace.HitPos, dmins, dmaxs, 1, Color(0, 0, 255))
+	// debugoverlay.Line(vchecktrace.StartPos, vchecktrace.HitPos, 1, Color(0, 0, 255))
+	// debugwireframebox(vchecktrace.HitPos, dmins, dmaxs, 1, Color(0, 0, 255))
 
 
 	if vchecktrace.StartSolid or vchecktrace.Hit then
@@ -471,8 +472,8 @@ UltiPar.GeneralVaultCheck = function(ply, appenddata)
 		maxs = pmaxs,
 	})
 
-	debugoverlay.Line(hchecktrace.StartPos, hchecktrace.HitPos, 0.5, Color(0, 255, 255))
-	debugwireframebox(hchecktrace.HitPos, pmins, pmaxs, 0.5, Color(0, 255, 255))
+	// debugoverlay.Line(hchecktrace.StartPos, hchecktrace.HitPos, 0.5, Color(0, 255, 255))
+	// debugwireframebox(hchecktrace.HitPos, pmins, pmaxs, 0.5, Color(0, 255, 255))
 
 
 	if hchecktrace.StartSolid then
@@ -869,9 +870,7 @@ elseif CLIENT then
 	
 		-- 执行特效
 		local effect = GetCurrentEffect(ply, action)
-		if effect then
-			effect.func(ply, checkresult)
-		end
+		if effect then effect.func(ply, checkresult) end
 	end)
 
 	net.Receive('UltiParEnd', function(len, ply)
