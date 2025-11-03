@@ -67,21 +67,11 @@ local convars = {
 	},
 
 	{
-		name = 'dp_lc_vault_vlen',
-		default = '0.6',
+		name = 'dp_vault_vlen',
+		default = '0.5',
 		widget = 'NumSlider',
 		min = 0.25,
 		max = 0.6,
-		decimals = 2,
-		help = true,
-	},
-
-	{
-		name = 'dp_lc_vault_min',
-		default = '0.25',
-		widget = 'NumSlider',
-		min = 0.25,
-		max = 0.5,
 		decimals = 2,
 		help = true,
 	},
@@ -94,8 +84,17 @@ local convars = {
 		max = 3,
 		decimals = 2,
 		help = true,
-	}
+	},
 
+	{
+		name = 'dp_vault_double',
+		default = '0.3',
+		widget = 'NumSlider',
+		min = 0,
+		max = 2,
+		decimals = 2,
+		help = true,
+	}
 }
 
 UltiPar.CreateConVars(convars)
@@ -107,10 +106,9 @@ local dp_lc_min = GetConVar('dp_lc_min')
 local dp_lc_max = GetConVar('dp_lc_max')
 
 local dp_lc_vault = GetConVar('dp_lc_vault')
-local dp_lc_vault_vlen = GetConVar('dp_lc_vault_vlen')
-local dp_lc_vault_min = GetConVar('dp_lc_vault_min')
 local dp_lc_vault_hlen = GetConVar('dp_lc_vault_hlen')
-
+local dp_vault_vlen = GetConVar('dp_vault_vlen')
+local dp_vault_double = GetConVar('dp_vault_double')
 
 local action, _ = UltiPar.Register('DParkour-LowClimb')
 if CLIENT then
@@ -124,6 +122,38 @@ else
 	convars = nil
 end
 ---------------------- 动作逻辑 ----------------------
+action.ClimbSpeed = function(ply, ref)
+	-- 返回爬楼初始速度、结束速度
+	return math.max(
+			ply:GetJumpPower() + 0.25 * (ply:KeyDown(IN_SPEED) and ply:GetRunSpeed() or ply:GetWalkSpeed()), 
+			ref
+		),
+		0
+end
+
+action.VaultSpeed = function(ply, ref, isdouble)
+	-- 返回Vault初始速度、结束速度、过渡速度
+	if isdouble then
+		local startvel, _ = action.ClimbSpeed(ply, ref)
+		local _, endvel = action.VaultSpeed(ply, ref, false)
+		return startvel, endvel * 0.8, startvel * 0.2
+	else
+		return ref,
+			math.max(
+				ply:GetJumpPower() + (ply:KeyDown(IN_SPEED) and ply:GetRunSpeed() or ply:GetWalkSpeed()),
+				ref
+			)
+	end
+end
+
+action.IsDoubleVault = function(ply, blockheight)
+	local pmins, pmaxs = ply:GetHull()
+	local plyHeight = pmaxs[3] - pmins[3]
+
+	return blockheight > dp_vault_double:GetFloat() * plyHeight
+end
+
+
 action.Clear = function()
 	// print('低爬动作清除')
 end
@@ -150,20 +180,23 @@ action.Check = function(ply)
 		loscos = dp_los_cos:GetFloat(),
 	})
 
+	if not dp_lc_vault:GetBool() then
+		return landdata
+	end
+
 	if landdata then
 		local plyWidth = math.max(bmaxs[1] - bmins[1], bmaxs[2] - bmins[2])
 
 		local vaultdata = UltiPar.GeneralVaultCheck(ply, {
 			hlen = dp_lc_vault_hlen:GetFloat() * plyWidth,
-			vlen = dp_lc_vault_vlen:GetFloat() * plyHeight,
+			vlen = dp_vault_vlen:GetFloat() * plyHeight,
 			landdata = landdata,
 		})
 
 		if vaultdata == nil then
-			return {landdata[1].HitPos, landdata[2]}
+			return landdata
 		else
-
-			return {landdata[1].HitPos, landdata[2], vaultdata[1].HitPos, vaultdata[2]}
+			return {landdata[1], landdata[2], landdata[3], vaultdata[2], vaultdata[3]}
 		end
 	end
 
@@ -173,7 +206,7 @@ action.CheckEnd = 0.5
 
 action.Play = function(ply, data)
 	if CLIENT or data == nil then return end
-	local landpos, blockheight, vaultpos, blockheightMirror = unpack(data)
+	local _, landpos, blockheight, vaultpos, blockheightVault = unpack(data)
 
 	if not vaultpos then
 		-- 检测一下落脚点能否站立
@@ -181,33 +214,53 @@ action.Play = function(ply, data)
 		local needduck = UltiPar.GeneralLandSpaceCheck(ply, endpos)
 
 		-- 移动的初始速度由玩家移动能力和跳跃能力决定
-		local startvel = ply:GetJumpPower() + 0.25 * (ply:KeyDown(IN_SPEED) and ply:GetRunSpeed() or ply:GetWalkSpeed())
-			startvel = math.max(ply:GetVelocity():Length(), startvel)
+		local startvel, endvel = action.ClimbSpeed(ply, ply:GetVelocity():Length())
 		
 		UltiPar.StartSmoothMove(
 			ply, 
+			nil,
 			endpos, 
 			startvel,
-			0,
+			endvel,
 			needduck and IN_JUMP or bit.bor(IN_JUMP, IN_DUCK), 
 			needduck and IN_DUCK or 0
 		)
 	else
 		local endpos = vaultpos
 
-		-- 移动的最终速度由玩家移动能力和跳跃能力决定
-		local startvel = ply:GetVelocity():Length()
-		local endvel = ply:GetJumpPower() + (ply:KeyDown(IN_SPEED) and ply:GetRunSpeed() or ply:GetWalkSpeed())
-			endvel = math.max(startvel, endvel)
-		
-		UltiPar.StartSmoothVault(
-			ply, 
-			endpos, 
-			startvel,
-			endvel,
-			bit.bor(IN_JUMP, IN_DUCK), 
-			0
-		)
+		if action.IsDoubleVault(ply, blockheightVault) then
+			-- 二段翻越, 最终速度衰减到0.8倍, 过渡速度为0.2倍
+			local startvel, endvel, middlevel = action.VaultSpeed(ply, ply:GetVelocity():Length(), true)
+			print(startvel, middlevel, endvel)
+
+			local middlepos = landpos
+			middlepos[3] = endpos[3]
+
+			UltiPar.StartSmoothDoubleVault(
+				ply, 
+				nil,
+				endpos, 
+				startvel,
+				endvel,
+				middlepos,
+				middlevel,
+				bit.bor(IN_JUMP, IN_DUCK), 
+				0
+			)
+		else
+			local startvel, endvel = action.VaultSpeed(ply, ply:GetVelocity():Length(), false)
+
+			UltiPar.StartSmoothVault(
+				ply, 
+				nil,
+				endpos, 
+				startvel,
+				endvel,
+				bit.bor(IN_JUMP, IN_DUCK), 
+				0
+			)
+		end
+
 	end
 end
 
@@ -225,13 +278,25 @@ local function effectfunc_default(ply, data)
 			surface.PlaySound('dparkour/bailang/vault.mp3')
 		end
 	else
-		local landpos, blockheight, vaultpos, blockheightMirror = unpack(data)
+		local pos, landpos, _, vaultpos, blockheightVault = unpack(data)
 		if SERVER then
 			-- 防止CalcView不兼容, 还是用ViewPunch吧
 			if not vaultpos then
 				ply:ViewPunch(Angle(0, 0, -5))
 			else
-				ply:ViewPunch(Angle(0, 0, -8))
+				if action.IsDoubleVault(ply, blockheightVault) then
+					ply:ViewPunch(Angle(8, 0, 0))
+
+					local middlepos = landpos
+					middlepos[3] = vaultpos[3]
+					local duration = 2 * (middlepos:Distance(pos)) / (1.2 * action.ClimbSpeed(ply, ply:GetVelocity():Length()))
+					
+					timer.Simple(duration, function()
+						ply:ViewPunch(Angle(0, 0, -8))
+					end)
+				else
+					ply:ViewPunch(Angle(0, 0, -8))
+				end
 			end
 		elseif CLIENT then
 			if not vaultpos then
@@ -240,11 +305,30 @@ local function effectfunc_default(ply, data)
 				VManip:PlayAnim('vault')
 				surface.PlaySound('dparkour/bailang/lowclimb.mp3')
 			else
-				UltiPar.SetVecPunchVel(Vector(100, 0, -10))
-				// UltiPar.SetAngPunchVel(Vector(0, 0, -50))
-				VManip:PlayAnim('vault')
-				VMLegs:PlayAnim('dp_lazy_BaiLang')
-				surface.PlaySound('dparkour/bailang/vault.mp3')
+				if action.IsDoubleVault(ply, blockheightVault) then
+					UltiPar.SetVecPunchVel(Vector(0, 0, 25))
+					// UltiPar.SetAngPunchVel(Vector(0, 0, -50))
+					VManip:PlayAnim('vault')
+					surface.PlaySound('dparkour/bailang/lowclimb.mp3')
+
+					local middlepos = landpos
+					middlepos[3] = vaultpos[3]
+					local duration = 2 * (middlepos:Distance(pos)) / (1.2 * action.ClimbSpeed(ply, ply:GetVelocity():Length()))
+					
+					timer.Simple(math.max(0.2, duration), function()
+						UltiPar.SetVecPunchVel(Vector(100, 0, -10))
+						// UltiPar.SetAngPunchVel(Vector(0, 0, -50))
+						VManip:PlayAnim('vault')
+						VMLegs:PlayAnim('dp_lazy_BaiLang')
+						surface.PlaySound('dparkour/bailang/vault.mp3')
+					end)
+				else
+					UltiPar.SetVecPunchVel(Vector(100, 0, -10))
+					// UltiPar.SetAngPunchVel(Vector(0, 0, -50))
+					VManip:PlayAnim('vault')
+					VMLegs:PlayAnim('dp_lazy_BaiLang')
+					surface.PlaySound('dparkour/bailang/vault.mp3')
+				end
 			end
 		end
 	end
@@ -259,24 +343,6 @@ local effect, _ = UltiPar.RegisterEffect(
 )
 effect.func = effectfunc_default
 
-local function effectfunc_VManip_mtbNTB(ply, data)
-	if SERVER then return end
-	if data == nil then
-		UltiPar.SetVecPunchVel(Vector(50, 0, -10))
-		UltiPar.SetAngPunchVel(Vector(0, 0, -50))
-		VManip:PlayAnim('vault')
-		surface.PlaySound('dparkour/mtbntb/lowclimb.mp3')
-	end
-end
-
-UltiPar.RegisterEffect(
-	'DParkour-LowClimb', 
-	'VManip-mtbNTB',
-	{
-		label = '#dp.effect.VManip_mtbNTB',
-		func = effectfunc_VManip_mtbNTB,
-	}
-)
 
 if CLIENT then
 	local triggertime = 0
@@ -305,7 +371,6 @@ if CLIENT then
 			UltiPar.Trigger(ply, 'DParkour-LowClimb') 
 		end
 	end)
-
 
 	concommand.Add('+dp_lowclimb_cl', function(ply)
 		ply.dp_runtrigger = true

@@ -374,7 +374,11 @@ UltiPar.GeneralClimbCheck = function(ply, appenddata)
 
 	trace.HitPos[3] = trace.HitPos[3] + 1
 
-	return {trace, trace.HitPos[3] - pos[3]}
+	return {
+		pos,
+		trace.HitPos, 
+		trace.HitPos[3] - pos[3]
+	}
 end
 
 UltiPar.GeneralLandSpaceCheck = function(ply, pos)
@@ -413,15 +417,15 @@ UltiPar.GeneralVaultCheck = function(ply, appenddata)
 	local dmins, dmaxs = ply:GetHullDuck()
 	local playWidth = math.max(dmaxs[1] - dmins[1], dmaxs[2] - dmins[2])
 	local eyeDir = XYNormal(ply:GetForward())
-	local pos = ply:GetPos() + unitzvec
+	local pos = landdata[1]
 
 
 	-- 简单检测一下是否会被阻挡
 	local linelen = appenddata.hlen + 0.707 * playWidth
 	local line = eyeDir * linelen
 	
-	local simpletrace1 = util.QuickTrace(landdata[1].HitPos + unitzvec * dmaxs[3], line, ply)
-	local simpletrace2 = util.QuickTrace(landdata[1].HitPos + unitzvec * (dmaxs[3] * 0.5), line, ply)
+	local simpletrace1 = util.QuickTrace(landdata[2] + unitzvec * dmaxs[3], line, ply)
+	local simpletrace2 = util.QuickTrace(landdata[2] + unitzvec * (dmaxs[3] * 0.5), line, ply)
 	
 	debugoverlay.Line(simpletrace1.StartPos, simpletrace1.HitPos, 1, Color(0, 0, 255))
 	debugoverlay.Line(simpletrace2.StartPos, simpletrace2.HitPos, 1, Color(0, 0, 255))
@@ -445,7 +449,7 @@ UltiPar.GeneralVaultCheck = function(ply, appenddata)
 	end
 
 	-- 检查障碍的镜像高度和是否卡住 
-	startpos = landdata[1].HitPos + maxVaultWidthVec
+	startpos = landdata[2] + maxVaultWidthVec
 	endpos = startpos - unitzvec * appenddata.vlen
 
 	local vchecktrace = util.TraceHull({
@@ -461,12 +465,10 @@ UltiPar.GeneralVaultCheck = function(ply, appenddata)
 	debugwireframebox(vchecktrace.HitPos, dmins, dmaxs, 1, Color(0, 0, 255))
 
 
-	if vchecktrace.StartSolid then
-		// print('翻越高度检测, 卡住了')
+	if vchecktrace.StartSolid or vchecktrace.Hit then
+		// print('翻越高度检测, 卡住了或镜像高度不足')
 		return
 	end
-
-	local blockheight = vchecktrace.Fraction * appenddata.vlen
 
 	-- 检测最终落脚点, 必须用站立时的碰撞盒检测
 	local pmins, pmaxs = ply:GetHull()
@@ -490,11 +492,11 @@ UltiPar.GeneralVaultCheck = function(ply, appenddata)
 		return
 	end
 
-	local blockwidth = hchecktrace.Fraction * maxVaultWidth
-
-	hchecktrace.HitPos = hchecktrace.HitPos + eyeDir * math.min(2, blockwidth)
-
-	return {hchecktrace, blockheight, blockwidth}
+	return {
+		pos,
+		hchecktrace.HitPos + eyeDir * math.min(2, hchecktrace.Fraction * maxVaultWidth), 
+		hchecktrace.HitPos[3] - pos[3]
+	}
 end
 
 
@@ -609,12 +611,12 @@ if SERVER then
 		end
 	end
 
-	local function StartEasyMove(ply, endpos, duration, removekeys, addkeys)
+	local function StartEasyMove(ply, startpos, endpos, duration, removekeys, addkeys)
 		ply:SetMoveType(MOVETYPE_NOCLIP)
 
 		ply.ultipar_move = {
 			Call = EasyMoveCall,
-			startpos = ply:GetPos(),
+			startpos = startpos or ply:GetPos(),
 			endpos = endpos,
 			duration = duration,
 			starttime = CurTime(),
@@ -644,18 +646,19 @@ if SERVER then
 		end
 	end
 
-	local function StartSmoothMove(ply, endpos, startvel, endvel, removekeys, addkeys)
+	local function StartSmoothMove(ply, startpos, endpos, startvel, endvel, removekeys, addkeys)
 		ply:SetMoveType(MOVETYPE_NOCLIP)
 
-		local dir = (endpos - ply:GetPos()):GetNormal()
-		local dis = (endpos - ply:GetPos()):Length()
+		startpos = startpos or ply:GetPos()
+		local dir = (endpos - startpos):GetNormal()
+		local dis = (endpos - startpos):Length()
 		local duration = 2 * dis / (startvel + endvel)
 		local acc = (endvel - startvel) / duration
 
 		ply.ultipar_move = {
 			Call = SmoothMove,
 			starttime = CurTime(),
-			startpos = ply:GetPos(),
+			startpos = startpos,
 			startvel = startvel,
 			endpos = endpos,
 			endvel = endvel,
@@ -688,24 +691,96 @@ if SERVER then
 		end
 	end
 
-	local function StartSmoothVault(ply, endpos, startvel, endvel, removekeys, addkeys)
+	local function StartSmoothVault(ply, startpos, endpos, startvel, endvel, removekeys, addkeys)
 		ply:SetMoveType(MOVETYPE_NOCLIP)
 
-		local dir = (endpos - ply:GetPos()):GetNormal()
-		local dis = (endpos - ply:GetPos()):Length()
+		startpos = startpos or ply:GetPos()
+		local dir = (endpos - startpos):GetNormal()
+		local dis = (endpos - startpos):Length()
 		local duration = 2 * dis / (startvel + endvel)
 		local acc = (endvel - startvel) / duration
 
 		ply.ultipar_move = {
 			Call = SmoothVault,
 			starttime = CurTime(),
-			startpos = ply:GetPos(),
+			startpos = startpos,
 			startvel = startvel,
 			endpos = endpos,
 			endvel = endvel,
 			duration = duration,
 			acc = acc,
 			dir = dir,
+		}
+
+		UltiPar.SetMoveControl(ply, true, true, removekeys or IN_JUMP, addkeys or 0)
+	end
+
+	local function SmoothDoubleVault(ply, mv, cmd)
+		-- 二段式翻越
+		local movedata = ply.ultipar_move
+		local dt = CurTime() - movedata.starttime
+
+		if dt < movedata.duration_middle then
+			mv:SetOrigin(
+				movedata.startpos + 
+				(0.5 * movedata.acc_middle * dt * dt + movedata.startvel * dt) * movedata.dir_middle
+			) 
+		elseif dt < movedata.duration_middle + movedata.duration then
+			dt = dt - movedata.duration_middle
+			mv:SetOrigin(
+				movedata.middlepos + 
+				(0.5 * movedata.acc * dt * dt + movedata.middlevel * dt) * movedata.dir +
+				(0.5 * -200 / movedata.duration * dt * dt + 100 * dt) * unitzvec
+			) 
+		else
+			mv:SetOrigin(movedata.endpos)
+			ply:SetMoveType(MOVETYPE_WALK)
+			mv:SetVelocity(movedata.endvel * movedata.dir)
+			ply.ultipar_move = nil -- 移动结束, 清除移动数据
+			UltiPar.SetMoveControl(ply, false, false, 0, 0)
+		end
+	end
+
+	local function StartSmoothDoubleVault(ply, 
+			startpos, 
+			endpos, 
+			startvel, 
+			endvel, 
+			middlepos,
+			middlevel,
+
+			removekeys, 
+			addkeys
+		)
+		ply:SetMoveType(MOVETYPE_NOCLIP)
+
+		startpos = startpos or ply:GetPos()
+		local dir_middle = (middlepos - startpos):GetNormal()
+		local dis_middle = (middlepos - startpos):Length()
+		local duration_middle = 2 * dis_middle / (startvel + middlevel)
+		local acc_middle = (middlevel - startvel) / duration_middle
+
+		local dir = (endpos - middlepos):GetNormal()
+		local dis = (endpos - middlepos):Length()
+		local duration = 2 * dis / (middlevel + endvel)
+		local acc = (endvel - middlevel) / duration
+
+		ply.ultipar_move = {
+			Call = SmoothDoubleVault,
+			starttime = CurTime(),
+			startpos = startpos or ply:GetPos(),
+			startvel = startvel,
+			endpos = endpos,
+			endvel = endvel,
+			middlepos = middlepos,
+			middlevel = middlevel,
+			duration = duration,
+			acc = acc,
+			dir = dir,
+
+			duration_middle = duration_middle,
+			acc_middle = acc_middle,
+			dir_middle = dir_middle,
 		}
 
 		UltiPar.SetMoveControl(ply, true, true, removekeys or IN_JUMP, addkeys or 0)
@@ -781,6 +856,7 @@ if SERVER then
 	UltiPar.StartEasyMove = StartEasyMove
 	UltiPar.StartSmoothMove = StartSmoothMove
 	UltiPar.StartSmoothVault = StartSmoothVault
+	UltiPar.StartSmoothDoubleVault = StartSmoothDoubleVault
 		
 	concommand.Add('up_clear', Clear)
 
