@@ -837,8 +837,13 @@ if SERVER then
 		if actionName then
 			local action = GetAction(actionName)
 			local checkresult = enddata[2]
-			action.Clear(ply, checkresult)	
-			
+				
+			net.Start('UltiParEnd')
+				net.WriteString(actionName)
+				net.WriteTable(checkresult)
+			net.Send(ply)
+
+			action.Clear(ply, checkresult)
 			hook.Run('UltiParEnd', ply, actionName, checkresult, false, true)
 		end
 	end
