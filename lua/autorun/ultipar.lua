@@ -1187,6 +1187,12 @@ if CLIENT then
 					playButton:SetIcon('icon16/cd_go.png')
 					
 					playButton.DoClick = function()
+						effectConfig[action.Name] = node.effect
+						
+						UltiPar.SendEffectConfigToServer(effectConfig)
+						UltiPar.SaveEffectConfigToDisk(effectConfig)
+						effecttree:RefreshNode()
+
 						-- 服务器端特效
 						UltiPar.EffectTest(action.Name, node.effect)
 
