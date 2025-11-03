@@ -203,7 +203,10 @@ local function Trigger(ply, actionName, appenddata)
 			interruptedAction = GetAction(interruptedActionName)
 			interruptedCheckresult = ply.ultipar_end[2]
 			hook.Run('UltiParEnd', ply, interruptedActionName, interruptedCheckresult, true, false)
-			interruptedAction.Clear(ply, interruptedCheckresult)
+			interruptedAction.Clear(ply, interruptedCheckresult, true, false)
+
+			local effect = GetCurrentEffect(ply, interruptedAction)
+			if effect and effect.funcclear then effect.funcclear(ply, interruptedCheckresult, true, false) end 
 		end
 
 		-- 标记进行中的动作和结束条件, 如果结束条件是实数则使用定时结束, 如果是函数则使用函数结束
@@ -543,7 +546,10 @@ if SERVER then
 			interruptedAction = GetAction(interruptedActionName)
 			interruptedCheckresult = ply.ultipar_end[2]
 			hook.Run('UltiParEnd', ply, interruptedActionName, interruptedCheckresult, true, false)
-			interruptedAction.Clear(ply, interruptedCheckresult)
+			interruptedAction.Clear(ply, interruptedCheckresult, true, false)
+
+			local effect = GetCurrentEffect(ply, interruptedAction)
+			if effect and effect.funcclear then effect.funcclear(ply, interruptedCheckresult, true, false) end 
 		end
 
 		-- 标记进行中的动作和结束条件, 如果结束条件是实数则使用定时结束, 如果是函数则使用函数结束
@@ -823,8 +829,11 @@ if SERVER then
 			net.Send(ply)
 
 			local action = GetAction(actionName)
-			action.Clear(ply, checkresult)
+			action.Clear(ply, checkresult, false, false)
 			hook.Run('UltiParEnd', ply, actionName, checkresult, false, false)
+
+			local effect = GetCurrentEffect(ply, action)
+			if effect and effect.funcclear then effect.funcclear(ply, checkresult, false, false) end
 		end
 
 	end)
@@ -848,8 +857,11 @@ if SERVER then
 				net.WriteTable(checkresult)
 			net.Send(ply)
 
-			action.Clear(ply, checkresult)
+			action.Clear(ply, checkresult, false, true)
 			hook.Run('UltiParEnd', ply, actionName, checkresult, false, true)
+
+			local effect = GetCurrentEffect(ply, action)
+			if effect and effect.funcclear then effect.funcclear(ply, checkresult, false, true) end
 		end
 	end
 
@@ -883,7 +895,10 @@ elseif CLIENT then
 
 		if interruptedActionName ~= '' then
 			local interruptedAction = GetAction(interruptedActionName)
-			interruptedAction.Clear(ply, interruptedCheckresult)
+			interruptedAction.Clear(ply, interruptedCheckresult, true, false)
+
+			local effect = GetCurrentEffect(ply, interruptedAction)
+			if effect and effect.funcclear then effect.funcclear(ply, interruptedCheckresult, true, false) end
 		end
 
 
@@ -903,7 +918,10 @@ elseif CLIENT then
 		ply = LocalPlayer()
 		local action = UltiPar.GetAction(actionName)
 
-		action.Clear(ply, checkresult)
+		action.Clear(ply, checkresult, false, false)
+
+		local effect = GetCurrentEffect(ply, action)
+		if effect and effect.funcclear then effect.funcclear(ply, checkresult, false, false) end
 	end)
 
 	local function LoadEffectFromDisk(path)
