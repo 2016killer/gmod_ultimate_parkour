@@ -27,8 +27,7 @@ local convars = {
 	{
 		name = 'dp_falldamage',
 		default = '1',
-		widget = 'CheckBox',
-		help = true,
+		widget = 'CheckBox'
 	},
 
 	{
