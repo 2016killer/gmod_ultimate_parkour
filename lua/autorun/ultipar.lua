@@ -199,7 +199,7 @@ local function Trigger(ply, actionName, appenddata)
 		if interruptedActionName then
 			interruptedAction = GetAction(interruptedActionName)
 			interruptedCheckresult = ply.ultipar_end[2]
-			hook.Run('UltiParEnd', ply, interruptedActionName, interruptedCheckresult, true)
+			hook.Run('UltiParEnd', ply, interruptedActionName, interruptedCheckresult, true, false)
 			interruptedAction.Clear(ply, interruptedCheckresult)
 		end
 
@@ -538,7 +538,7 @@ if SERVER then
 		if interruptedActionName then
 			interruptedAction = GetAction(interruptedActionName)
 			interruptedCheckresult = ply.ultipar_end[2]
-			hook.Run('UltiParEnd', ply, interruptedActionName, interruptedCheckresult, true)
+			hook.Run('UltiParEnd', ply, interruptedActionName, interruptedCheckresult, true, false)
 			interruptedAction.Clear(ply, interruptedCheckresult)
 		end
 
@@ -819,17 +819,28 @@ if SERVER then
 
 			local action = GetAction(actionName)
 			action.Clear(ply, checkresult)
-			hook.Run('UltiParEnd', ply, actionName, checkresult, false)
+			hook.Run('UltiParEnd', ply, actionName, checkresult, false, false)
 		end
 
 	end)
 
 	local function Clear(ply)
+		local actionName = ply.ultipar_playing
+		local enddata = ply.ultipar_end
+
 		ply.ultipar_playing = nil
 		ply.ultipar_move = nil
 		ply.ultipar_end = nil
 		
 		UltiPar.SetMoveControl(ply, false, false, 0, 0)
+
+		if actionName then
+			local action = GetAction(actionName)
+			local checkresult = enddata[2]
+			action.Clear(ply, checkresult)	
+			
+			hook.Run('UltiParEnd', ply, actionName, checkresult, false, true)
+		end
 	end
 
 	hook.Add('PlayerDeath', 'ultipar.clear', Clear)
@@ -840,6 +851,8 @@ if SERVER then
 		Clear(ply)
 		ply.ultipar_effect_config = ply.ultipar_effect_config or {}
 	end)
+
+	hook.Add('PlayerSpawn', 'ultipar.clear', Clear)
 
 	UltiPar.SetMoveControl = SetMoveControl
 	UltiPar.StartEasyMove = StartEasyMove
