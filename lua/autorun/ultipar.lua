@@ -188,6 +188,9 @@ local function Trigger(ply, actionName, appenddata)
 	local checkresult = action.Check(ply, appenddata)
 	if not checkresult then
 		return
+	elseif not istable(checkresult) then
+		ErrorNoHalt(string.format('[UltiPar]: Action "%s" Check function return value is not a table.\n', actionName))
+		return
 	end
 
 	if SERVER then
@@ -207,8 +210,9 @@ local function Trigger(ply, actionName, appenddata)
 		local checkend = action.CheckEnd
 		ply.ultipar_playing = actionName
 		ply.ultipar_end = {
-			isnumber(checkend) and CurTime() + checkend or checkend,
-			checkresult
+			checkend,
+			checkresult,
+			CurTime()
 		}
 		
 		-- 执行动作
@@ -546,8 +550,9 @@ if SERVER then
 		local checkend = action.CheckEnd
 		ply.ultipar_playing = actionName
 		ply.ultipar_end = {
-			isnumber(checkend) and CurTime() + checkend or checkend,
-			checkresult
+			checkend,
+			checkresult,
+			CurTime()
 		}
 		
 		-- 执行动作
@@ -796,13 +801,13 @@ if SERVER then
 
 	hook.Add('PlayerPostThink', 'ultipar.checkend', function(ply)
 		if ply.ultipar_playing == nil then return end
-		local checkend, checkresult = unpack(ply.ultipar_end)
+		local checkend, checkresult, starttime = unpack(ply.ultipar_end)
 
 		local flag
 		if isnumber(checkend) then
-			flag = CurTime() > checkend	
+			flag = CurTime() - starttime > checkend	
 		elseif isfunction(checkend) then
-			flag = checkend(ply, checkresult)
+			flag = checkend(ply, checkresult, starttime)
 		else
 			flag = true
 		end
@@ -1217,7 +1222,7 @@ if CLIENT then
 						-- 客户端特效
 						local effect = GetEffect(action, node.effect)
 						if isfunction(effect.func) then
-							effect.func(ply, nil)
+							effect.func(LocalPlayer(), nil)
 						end
 					end
 				end
