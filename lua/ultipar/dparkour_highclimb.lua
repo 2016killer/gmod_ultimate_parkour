@@ -116,7 +116,8 @@ local dp_lh_vault_hlen = GetConVar('dp_lh_vault_hlen')
 local dp_vault_vlen = GetConVar('dp_vault_vlen')
 local dp_vault_double = GetConVar('dp_vault_double')
 
-local action, _ = UltiPar.Register('DParkour-HighClimb')
+local actionName = 'DParkour-HighClimb'
+local action, _ = UltiPar.Register(actionName)
 if CLIENT then
 	action.label = '#dp.highclimb'
 	action.icon = 'dparkour/icon.jpg'
@@ -354,20 +355,22 @@ local function effectfunc_default(ply, data)
 end
 
 local effect, _ = UltiPar.RegisterEffect(
-	'DParkour-HighClimb', 
+	actionName, 
 	'default',
 	{
 		label = '#default'
 	}
 )
 effect.func = effectfunc_default
+effect.funcclear = UltiPar.emptyfunc
 
 UltiPar.RegisterEffect(
-	'DParkour-HighClimb', 
+	actionName, 
 	'SP-VManip-白狼',
 	{
 		label = '#dp.effect.SP_VManip_BaiLang',
-		func = effectfunc_default
+		func = effectfunc_default,
+		funcclear = UltiPar.emptyfunc
 	}
 )
 
@@ -391,19 +394,19 @@ if CLIENT then
 		if curtime - triggertime < dp_lh_per:GetFloat() then return end
 		triggertime = curtime
 
-		Trigger(LocalPlayer(), 'DParkour-HighClimb')
+		Trigger(LocalPlayer(), actionName)
 	end)
 
 	hook.Add('KeyPress', 'dparkour.highclimb.trigger', function(ply, key)
 		if key == IN_JUMP and dp_lh_keymode:GetBool() and not dp_workmode:GetBool() then 
-			Trigger(ply, 'DParkour-HighClimb') 
+			Trigger(ply, actionName) 
 		end
 	end)
 
 
 	concommand.Add('+dp_highclimb_cl', function(ply)
 		ply.dp_runtrigger_highclimb = true
-		Trigger(LocalPlayer(), 'DParkour-HighClimb')
+		Trigger(LocalPlayer(), actionName)
 	end)
 
 	concommand.Add('-dp_highclimb_cl', function(ply)
@@ -432,18 +435,18 @@ elseif SERVER then
 		if curtime - triggertime < dp_lh_per:GetFloat() then return end
 		triggertime = curtime
 
-		Trigger(ply, 'DParkour-HighClimb')
+		Trigger(ply, actionName)
 	end)
 
 	hook.Add('KeyPress', 'dparkour.highclimb.trigger', function(ply, key)
 		if key == IN_JUMP and dp_lh_keymode:GetBool() and dp_workmode:GetBool() then 
-			Trigger(ply, 'DParkour-HighClimb') 
+			Trigger(ply, actionName) 
 		end
 	end)
 
 	concommand.Add('+dp_highclimb_sv', function(ply)
 		ply.dp_runtrigger_highclimb = true
-		Trigger(ply, 'DParkour-HighClimb')
+		Trigger(ply, actionName)
 	end)
 
 	concommand.Add('-dp_highclimb_sv', function(ply)

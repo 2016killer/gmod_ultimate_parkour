@@ -16,16 +16,21 @@
 				func = function(ply, checkdata)
 					-- 特效
 				end
+				funcclear = function(ply, checkdata, checkenddata, breakAcitonName, breakCheckdata)
+					-- 当中断或强制退出时checkenddata为nil, 否则为表
+					-- 强制中断时 breakAcitonName 为 true	
+					-- 清除特效
+				end
 			},
 			...
 		},
 
 		-- 指定了可以中断该动作的其他动作
 		Interrupts = {
-			ExampleAciton = 1
+			ExampleAcitonName = true
 		}
 
-		Check = function(ply)
+		Check = function(ply, appenddata)
 			-- 检查动作是否可执行
 			return checkdata
 		end,
@@ -34,16 +39,36 @@
 			-- 播放动作
 		end,
 
-		CheckEnd = number or function(ply, checkdata)
+		CheckEnd = number or function(ply, checkdata, starttime)
 			-- 检查动作是否执行完毕
-			return checkend
+			-- 可以返回非表, 会默认为空表给Clear
+			return checkenddata
 		end,
 
-		Clear = function(ply, checkdata)
+		Clear = function(ply, checkdata, checkenddata, breakAcitonName, breakCheckdata)
+			-- 当中断或强制退出时checkenddata为nil, 否则为表
+			-- 强制中断时 breakAcitonName 为 true
 			-- 清除动作
 		end,
 	}
+
+	Check -> Play -> CheckEnd -> Clear
 ]]--
+
+local function printdata(flag, ...)
+    local total = select('#', ...)
+	print('[UltiPar]: ---------------' .. flag .. '---------------')
+	print('total:', total)
+    for i = 1, total do
+        local data = select(i, ...)
+        if istable(data) then
+			print('arg'..tostring(i)..':', data)
+			PrintTable(data)
+		else
+			print('arg'..tostring(i)..':', data)
+		end
+    end
+end
 
 local function XYNormal(v)
 	v[3] = 0
@@ -57,6 +82,7 @@ UltiPar = UltiPar or {}
 UltiPar.ActionSet = UltiPar.ActionSet or {}
 UltiPar.DisabledSet = UltiPar.DisabledSet or {}
 UltiPar.MoveControl = {} -- 移动控制, 此变量不可直接修改, 使用SetMoveControl修改
+UltiPar.emptyfunc = function() end
 
 local DisabledSet = UltiPar.DisabledSet
 local ActionSet = UltiPar.ActionSet
@@ -96,22 +122,36 @@ local function Register(name, action)
 	action.Name = name
 	action.Effects = action.Effects or {}
 	action.Interrupts = action.Interrupts or {}
-	action.Check = action.Check or function(ply)
-		ErrorNoHalt(string.format('[UltiPar]: Action "%s" Check function is not defined.\n', name))
+	action.Check = action.Check or function(ply, appenddata)
+		printdata(
+			string.format('Check function is not defined, Action "%s"', name),
+			ply, appenddata
+		)
+
 		return false
 	end
 
 	action.Play = action.Play or function(ply, checkdata)
-		ErrorNoHalt(string.format('[UltiPar]: Action "%s" Play function is not defined.\n', name))
+		printdata(
+			string.format('Play function is not defined, Action "%s"', name),
+			ply, checkdata
+		)
 	end
 
-	action.CheckEnd = action.CheckEnd or function(ply, checkdata)
-		ErrorNoHalt(string.format('[UltiPar]: Action "%s" CheckEnd is not defined.\n', name))
+	action.CheckEnd = action.CheckEnd or function(ply, checkdata, starttime)
+		printdata(
+			string.format('CheckEnd is not defined, Action "%s"', name),
+			ply, checkdata, starttime
+		)
+
 		return true
 	end
 
-	action.Clear = action.Clear or function(ply, checkdata)
-		ErrorNoHalt(string.format('[UltiPar]: Action "%s" Clear is not defined.\n', name))
+	action.Clear = action.Clear or function(ply, checkdata, checkenddata, breakAcitonName, breakCheckdata)
+		printdata(
+			string.format('Clear is not defined. Action "%s"', name),
+			ply, checkdata, checkenddata, breakAcitonName, breakCheckdata
+		)
 	end
 
 	if not exist and CLIENT and UltiPar.ActionManager then 
@@ -142,10 +182,28 @@ local function RegisterEffect(actionName, effectName, effect)
 
 	effect.func = effect.func or function(ply, checkdata)
 		-- 特效
-		ErrorNoHalt(string.format('Effect "%s" func is not defined.\n', effectName))
+		printdata(
+			string.format('Effect "%s" func is not defined, Action "%s"', effectName, actionName),
+			ply, checkdata
+		)
+	end
+
+	effect.funcclear = effect.funcclear or function(ply, checkdata, checkenddata, breakAcitonName, breakCheckdata)
+		-- 当中断或强制退出时checkenddata为nil, 否则为表
+		-- 强制中断时 breakAcitonName 为 true	
+		-- 清除特效
+		printdata(
+			string.format('Effect "%s" funcclear is not defined, Action "%s"', effectName, actionName),
+			ply, checkdata, checkenddata, breakAcitonName, breakCheckdata
+		)
 	end
 
 	return effect, exist
+end
+
+local function EnableInterrupt(action, actionName2)
+	-- 启用中断
+	action.Interrupts[actionName2] = true
 end
 
 local function AllowInterrupt(ply, actionName)
@@ -194,20 +252,43 @@ local function Trigger(ply, actionName, appenddata)
 	end
 
 	if SERVER then
-		hook.Run('UltiParStart', ply, actionName, checkresult)
-	
 		local interruptedActionName = ply.ultipar_playing
 		local interruptedCheckresult
 		local interruptedAction
 		if interruptedActionName then
 			interruptedAction = GetAction(interruptedActionName)
 			interruptedCheckresult = ply.ultipar_end[2]
-			hook.Run('UltiParEnd', ply, interruptedActionName, interruptedCheckresult, true, false)
-			interruptedAction.Clear(ply, interruptedCheckresult, true, false)
+			hook.Run(
+				'UltiParEnd', 
+				ply, 
+				interruptedActionName, 
+				interruptedCheckresult, 
+				nil,
+				actionName, 
+				checkresult
+			)
+
+			interruptedAction.Clear(
+				ply, 
+				interruptedCheckresult, 
+				nil,
+				actionName, 
+				checkresult
+			)
 
 			local effect = GetCurrentEffect(ply, interruptedAction)
-			if effect and effect.funcclear then effect.funcclear(ply, interruptedCheckresult, true, false) end 
+			if effect then 
+				effect.funcclear(
+					ply, 
+					interruptedCheckresult, 
+					nil, 
+					actionName,
+					checkresult
+				) 
+			end 
 		end
+
+		hook.Run('UltiParStart', ply, actionName, checkresult)
 
 		-- 标记进行中的动作和结束条件, 如果结束条件是实数则使用定时结束, 如果是函数则使用函数结束
 		local checkend = action.CheckEnd
@@ -277,6 +358,7 @@ UltiPar.AllowInterrupt = AllowInterrupt
 UltiPar.SetActionDisable = SetActionDisable
 UltiPar.IsActionDisable = IsActionDisable
 UltiPar.debugwireframebox = debugwireframebox
+UltiPar.EnableInterrupt = EnableInterrupt
 UltiPar.GeneralClimbCheck = function(ply, appenddata)
 	-- 通用障碍检查
 	-- 检查前方是否有障碍并且检测是否有落脚点
@@ -536,8 +618,6 @@ if SERVER then
 		if ply.ultipar_playing and not AllowInterrupt(ply, actionName) or not action then 
 			return 
 		end
-
-		hook.Run('UltiParStart', ply, actionName, checkresult)
 	
 		local interruptedActionName = ply.ultipar_playing
 		local interruptedCheckresult
@@ -545,12 +625,37 @@ if SERVER then
 		if interruptedActionName then
 			interruptedAction = GetAction(interruptedActionName)
 			interruptedCheckresult = ply.ultipar_end[2]
-			hook.Run('UltiParEnd', ply, interruptedActionName, interruptedCheckresult, true, false)
-			interruptedAction.Clear(ply, interruptedCheckresult, true, false)
+			hook.Run(
+				'UltiParEnd', 
+				ply, 
+				interruptedActionName, 
+				interruptedCheckresult, 
+				nil,
+				actionName, 
+				checkresult
+			)
+
+			interruptedAction.Clear(
+				ply, 
+				interruptedCheckresult, 
+				nil,
+				actionName, 
+				checkresult
+			)
 
 			local effect = GetCurrentEffect(ply, interruptedAction)
-			if effect and effect.funcclear then effect.funcclear(ply, interruptedCheckresult, true, false) end 
+			if effect then 
+				effect.funcclear(
+					ply, 
+					interruptedCheckresult, 
+					nil, 
+					actionName,
+					checkresult
+				) 
+			end 
 		end
+
+		hook.Run('UltiParStart', ply, actionName, checkresult)
 
 		-- 标记进行中的动作和结束条件, 如果结束条件是实数则使用定时结束, 如果是函数则使用函数结束
 		local checkend = action.CheckEnd
@@ -820,20 +925,46 @@ if SERVER then
 
 		if flag then
 			local actionName = ply.ultipar_playing
+			local checkendresult = istable(flag) and flag or {}
 			ply.ultipar_playing = nil
 			ply.ultipar_end = nil
 
 			net.Start('UltiParEnd')
 				net.WriteString(actionName)
 				net.WriteTable(checkresult)
+				net.WriteBool(false)
+				net.WriteTable(checkendresult)
 			net.Send(ply)
 
+			hook.Run(
+				'UltiParEnd', 
+				ply, 
+				actionName, 
+				checkresult,
+				checkendresult,
+				nil,
+				nil
+			)
+
 			local action = GetAction(actionName)
-			action.Clear(ply, checkresult, false, false)
-			hook.Run('UltiParEnd', ply, actionName, checkresult, false, false)
+			action.Clear(
+				ply, 
+				checkresult, 
+				checkendresult,
+				nil, 
+				nil
+			)
 
 			local effect = GetCurrentEffect(ply, action)
-			if effect and effect.funcclear then effect.funcclear(ply, checkresult, false, false) end
+			if effect then 
+				effect.funcclear(
+					ply, 
+					checkresult, 
+					checkendresult, 
+					nil,
+					nil
+				) 
+			end
 		end
 
 	end)
@@ -855,13 +986,37 @@ if SERVER then
 			net.Start('UltiParEnd')
 				net.WriteString(actionName)
 				net.WriteTable(checkresult)
+				net.WriteBool(true)
 			net.Send(ply)
 
-			action.Clear(ply, checkresult, false, true)
-			hook.Run('UltiParEnd', ply, actionName, checkresult, false, true)
+			hook.Run(
+				'UltiParEnd', 
+				ply, 
+				actionName, 
+				checkresult,
+				nil,
+				true,
+				nil
+			)
+
+			action.Clear(
+				ply, 
+				checkresult, 
+				nil,
+				true, 
+				nil
+			)
 
 			local effect = GetCurrentEffect(ply, action)
-			if effect and effect.funcclear then effect.funcclear(ply, checkresult, false, true) end
+			if effect then 
+				effect.funcclear(
+					ply, 
+					checkresult, 
+					nil, 
+					true,
+					nil
+				) 
+			end
 		end
 	end
 
@@ -895,10 +1050,25 @@ elseif CLIENT then
 
 		if interruptedActionName ~= '' then
 			local interruptedAction = GetAction(interruptedActionName)
-			interruptedAction.Clear(ply, interruptedCheckresult, true, false)
+		
+			interruptedAction.Clear(
+				ply, 
+				interruptedCheckresult, 
+				nil,
+				actionName, 
+				checkresult
+			)
 
 			local effect = GetCurrentEffect(ply, interruptedAction)
-			if effect and effect.funcclear then effect.funcclear(ply, interruptedCheckresult, true, false) end
+			if effect then 
+				effect.funcclear(
+					ply, 
+					interruptedCheckresult, 
+					nil, 
+					actionName,
+					checkresult
+				) 
+			end
 		end
 
 
@@ -914,14 +1084,31 @@ elseif CLIENT then
 	net.Receive('UltiParEnd', function(len, ply)
 		local actionName = net.ReadString()
 		local checkresult = net.ReadTable()
+		local isforce = net.ReadBool()
+		local checkendresult = not isforce and net.ReadTable() or nil
 
 		ply = LocalPlayer()
 		local action = UltiPar.GetAction(actionName)
 
-		action.Clear(ply, checkresult, false, false)
+		action.Clear(
+			ply, 
+			checkresult, 
+			checkendresult,
+			isforce or nil, 
+			nil
+		)
 
 		local effect = GetCurrentEffect(ply, action)
-		if effect and effect.funcclear then effect.funcclear(ply, checkresult, false, false) end
+		if effect then 
+			effect.funcclear(
+				ply, 
+				checkresult, 
+				checkendresult, 
+				isforce or nil,
+				nil
+			) 
+		end
+	
 	end)
 
 	local function LoadEffectFromDisk(path)
@@ -1302,6 +1489,7 @@ if CLIENT then
 				tree.RefreshNode = function(self)
 					tree:Clear()
 					for k, v in pairs(UltiPar.ActionSet) do
+						if v.Invisible then continue end
 						local label = isstring(v.label) and v.label or k
 						local icon = isstring(v.icon) and v.icon or 'icon32/tool.png'
 
