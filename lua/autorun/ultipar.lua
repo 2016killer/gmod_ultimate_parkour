@@ -208,8 +208,8 @@ end
 
 local function AllowInterrupt(ply, actionName)
 	-- 允许中断
-	local action = GetAction(ply.ultipar_playing)
-	return action and action.Interrupts[actionName] ~= nil
+	local actionPlaying = GetAction(ply.ultipar_playing)
+	return actionPlaying and actionPlaying.Interrupts[actionName] ~= nil
 end
 
 local function SetActionDisable(actionName, disable)
@@ -318,6 +318,8 @@ local function Trigger(ply, actionName, appenddata)
 			net.WriteTable(checkresult)
 		net.SendToServer()
 	end
+
+	return checkresult
 end
 
 local debugwireframebox = function(pos, mins, maxs, lifetime, color, ignoreZ)
