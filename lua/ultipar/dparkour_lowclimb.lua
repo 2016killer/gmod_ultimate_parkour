@@ -143,7 +143,7 @@ action.VaultSpeed = function(ply, ref, isdouble)
 	if isdouble then
 		local startvel, _ = action.ClimbSpeed(ply, ref)
 		local _, endvel = action.VaultSpeed(ply, ref, false)
-		return startvel, endvel * 0.8, startvel * 0.2
+		return startvel, endvel * 0.8, startvel * 0.4
 	else
 		local vaultDir = ply:EyeAngles():Forward()
 		vaultDir[3] = 0
@@ -262,7 +262,7 @@ action.Play = function(ply, data)
 		if action.IsDoubleVault(ply, blockheightVault) then
 			-- 二段翻越, 最终速度衰减到0.8倍, 过渡速度为0.2倍
 			local startvel, endvel, middlevel = action.VaultSpeed(ply, ply:GetVelocity(), true)
-
+			// print(startvel, middlevel, endvel)
 			local middlepos = landpos
 			middlepos[3] = endpos[3]
 

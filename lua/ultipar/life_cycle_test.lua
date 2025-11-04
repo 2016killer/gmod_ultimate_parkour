@@ -63,11 +63,6 @@ local effect, _ = UltiPar.RegisterEffect(
 )
 
 
---[[
-作者:白狼
-2025 11 1
-]]--
-
 -- ==================== 生命期测试 中断 ===============
 
 local actionName2 = 'LifeCycleTest_Breaker'
