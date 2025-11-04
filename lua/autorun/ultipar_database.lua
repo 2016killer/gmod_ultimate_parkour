@@ -33,7 +33,7 @@ local function WriteActionDisable(contents)
 				local safeKey = sql.SQLStr(tostring(k))  
 				local tempValue
 				tempValue = v and "1" or "0"
-				print(tempValue)
+				// print(tempValue)
 				
 				local query = "INSERT INTO ulitpar_action_disable" .. " VALUES (" .. safeKey .. ", " .. tempValue .. ")"
 

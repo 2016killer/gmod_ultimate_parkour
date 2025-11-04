@@ -583,6 +583,7 @@ end
 
 
 if SERVER then
+	util.AddNetworkString('UltiParLoadLuaFiles')
 	util.AddNetworkString('UltiParMoveControl')
 	util.AddNetworkString('UltiParPlay')
 	util.AddNetworkString('UltiParEnd')
@@ -1288,27 +1289,61 @@ elseif CLIENT then
 end
 
 -- 加载动作文件
-local filelist = file.Find('ultipar/*.lua', 'LUA')
-for _, filename in pairs(filelist) do
-	client = string.StartWith(filename, 'cl_')
-	server = string.StartWith(filename, 'sv_')
+local function LoadLuaFiles()
+	local filelist = file.Find('ultipar/*.lua', 'LUA')
+	for _, filename in pairs(filelist) do
+		client = string.StartWith(filename, 'cl_')
+		server = string.StartWith(filename, 'sv_')
 
-	if SERVER then
-		if not client then
-			include('ultipar/' .. filename)
-			print('[UltiPar]: AddFile:' .. filename)
-		end
+		if SERVER then
+			if not client then
+				include('ultipar/' .. filename)
+				print('[UltiPar]: AddFile:' .. filename)
+			end
 
-		if not server then
-			AddCSLuaFile('ultipar/' .. filename)
-		end
-	else
-		if client or not server then
-			include('ultipar/' .. filename)
-			print('[UltiPar]: AddFile:' .. filename)
+			if not server then
+				AddCSLuaFile('ultipar/' .. filename)
+			end
+		else
+			if client or not server then
+				include('ultipar/' .. filename)
+				print('[UltiPar]: AddFile:' .. filename)
+			end
 		end
 	end
 end
+
+UltiPar.LoadLuaFiles = function()
+	if CLIENT then
+		if not GetConVar('developer'):GetBool() then
+			LocalPlayer():ChatPrint('[UltiPar]: must set "developer" to 1 before loading lua files')
+			return
+		end
+
+		net.Start('UltiParLoadLuaFiles')
+		net.SendToServer()
+	elseif SERVER then
+		LoadLuaFiles()
+		net.Start('UltiParLoadLuaFiles')
+		net.Broadcast()
+	end
+end
+
+if CLIENT then
+	net.Receive('UltiParLoadLuaFiles', function()
+		LoadLuaFiles()
+	end)
+elseif SERVER then
+	net.Receive('UltiParLoadLuaFiles', function(len, ply)
+		if not IsValid(ply) or not ply:IsSuperAdmin() then 
+			ply:ChatPrint('[UltiPar]: must be super admin to load lua files')
+			return 
+		end
+		UltiPar.LoadLuaFiles()
+	end)
+end
+
+LoadLuaFiles()
 
 if CLIENT then
 	local white = Color(255, 255, 255)
@@ -1537,6 +1572,11 @@ if CLIENT then
 
 				UltiPar.ActionManager = tree
 				UltiPar.ReadActionDisable()
+
+				local LoadLuaButton = panel:Button('#ultipar.loadlua')
+				LoadLuaButton.DoClick = function()
+					UltiPar.LoadLuaFiles()
+				end
 			end)
 	end)
 end
