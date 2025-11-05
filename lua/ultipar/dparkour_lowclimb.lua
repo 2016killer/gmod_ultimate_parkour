@@ -8,10 +8,19 @@
 ---------------------- 菜单 ----------------------
 local convars = {
 	{
-		name = 'dp_workmode',
+		name = 'dp_keymode',
 		default = '1',
 		widget = 'CheckBox',
 		help = true,
+	},
+
+	{
+		name = 'dp_per',
+		default = '0.1',
+		widget = 'NumSlider',
+		min = 0.05,
+		max = 3600,
+		decimals = 2,
 	},
 
 	{
@@ -28,22 +37,6 @@ local convars = {
 		name = 'dp_falldamage',
 		default = '1',
 		widget = 'CheckBox'
-	},
-
-	{
-		name = 'dp_lc_keymode',
-		default = '1',
-		widget = 'CheckBox',
-		help = true,
-	},
-
-	{
-		name = 'dp_lc_per',
-		default = '0.1',
-		widget = 'NumSlider',
-		min = 0.05,
-		max = 3600,
-		decimals = 2,
 	},
 
 	{
@@ -103,11 +96,11 @@ local convars = {
 }
 
 UltiPar.CreateConVars(convars)
-local dp_workmode = GetConVar('dp_workmode')
 local dp_los_cos = GetConVar('dp_los_cos')
 local dp_falldamage = GetConVar('dp_falldamage')
-local dp_lc_keymode = GetConVar('dp_lc_keymode')
-local dp_lc_per = GetConVar('dp_lc_per')
+local dp_keymode = GetConVar('dp_keymode')
+local dp_check_per = GetConVar('dp_check_per')
+
 local dp_lc_min = GetConVar('dp_lc_min')
 local dp_lc_max = GetConVar('dp_lc_max')
 
@@ -211,11 +204,12 @@ action.Check = function(ply)
 			return {landdata[1], landdata[2], landdata[3], vaultdata[2], vaultdata[3]}
 		end
 	end
-
 end
 
-action.CheckEnd = 0.5
-
+action.Start = function(ply, data)
+	if CLIENT then return end
+	local _, landpos, blockheight, vaultpos, blockheightVault = unpack(data)
+end
 action.Play = function(ply, data)
 	if CLIENT or data == nil then return end
 	local _, landpos, blockheight, vaultpos, blockheightVault = unpack(data)
@@ -294,7 +288,7 @@ action.Play = function(ply, data)
 	end
 end
 
-local function effectfunc_default(ply, data)
+local function effectstart_default(ply, data)
 	if data == nil then
 		-- 演示模式
 		if SERVER then
@@ -364,105 +358,36 @@ local function effectfunc_default(ply, data)
 	end
 end
 
+local function effectclear_default(ply, data)
+	VManip:Remove()
+	VMLegs:Remove()
+end
 
 local effect, _ = UltiPar.RegisterEffect(
 	actionName, 
 	'default',
-	{
-		label = '#default'
-	}
+	{label = '#default'}
 )
-effect.func = effectfunc_default
-effect.funcclear = UltiPar.emptyfunc
+effect.start = effectstart_default
+effect.clear = effectclear_default
 
 UltiPar.RegisterEffect(
 	actionName, 
 	'SP-VManip-白狼',
 	{
 		label = '#dp.effect.SP_VManip_BaiLang',
-		func = effectfunc_default,
-		funcclear = UltiPar.emptyfunc
+		start = effectstart_default,
+		clear = effectclear_default
 	}
 )
 
 
 if CLIENT then
-	local triggertime = 0
-	local Trigger = UltiPar.Trigger
-	hook.Add('Think', 'dparkour.lowclimb.trigger', function()
-		local ply = LocalPlayer()
-		if dp_workmode:GetBool() then return end
-		if dp_lc_keymode:GetBool() then 
-			if not ply:KeyDown(IN_JUMP) then 
-				return 
-			end
-		else
-			if not ply.dp_runtrigger then 
-				return 
-			end
-		end
-
-		local curtime = CurTime()
-		if curtime - triggertime < dp_lc_per:GetFloat() then return end
-		triggertime = curtime
-
-		Trigger(LocalPlayer(), actionName)
-	end)
-
-	hook.Add('KeyPress', 'dparkour.lowclimb.trigger', function(ply, key)
-		if key == IN_JUMP and dp_lc_keymode:GetBool() and not dp_workmode:GetBool() then 
-			Trigger(ply, actionName) 
-		end
-	end)
-
-	concommand.Add('+dp_lowclimb_cl', function(ply)
-		ply.dp_runtrigger = true
-		Trigger(LocalPlayer(), actionName)
-	end)
-
-	concommand.Add('-dp_lowclimb_cl', function(ply)
-		ply.dp_runtrigger = false
-	end)
-	
 	hook.Add('ShouldDisableLegs', 'dparkour.gmodleg', function()
 		return VMLegs and VMLegs:IsActive()
 	end)
 elseif SERVER then
-	local triggertime = 0
-	local Trigger = UltiPar.Trigger
-	hook.Add('PlayerPostThink', 'dparkour.lowclimb.trigger', function(ply)
-		if not dp_workmode:GetBool() then return end
-		if dp_lc_keymode:GetBool() then 
-			if not ply:KeyDown(IN_JUMP) then 
-				return 
-			end
-		else
-			if not ply.dp_runtrigger then 
-				return 
-			end
-		end
 
-		local curtime = CurTime()
-		if curtime - triggertime < dp_lc_per:GetFloat() then return end
-		triggertime = curtime
-
-		Trigger(ply, actionName)
-	end)
-
-	hook.Add('KeyPress', 'dparkour.lowclimb.trigger', function(ply, key)
-		if key == IN_JUMP and dp_lc_keymode:GetBool() and dp_workmode:GetBool() then 
-			Trigger(ply, actionName) 
-		end
-	end)
-
-	concommand.Add('+dp_lowclimb_sv', function(ply)
-		ply.dp_runtrigger = true
-		Trigger(ply, actionName)
-	end)
-
-	concommand.Add('-dp_lowclimb_sv', function(ply)
-		ply.dp_runtrigger = false
-	end)
 end
 
 

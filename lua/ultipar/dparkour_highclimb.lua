@@ -4,7 +4,7 @@
 ]]--
 
 -- ==================== 高爬动作 ===============
-
+local UltiPar = UltiPar
 ---------------------- 菜单 ----------------------
 local convars = {
 	{
@@ -130,11 +130,7 @@ else
 end
 ---------------------- 动作逻辑 ----------------------
 action.Clear = function()
-	// print('高爬动作清除')
 end
-
-local GeneralClimbCheck = UltiPar.GeneralClimbCheck
-
 
 action.ClimbSpeed = function(ply, ref)
 	-- 返回爬楼初始速度、结束速度
@@ -175,8 +171,6 @@ action.IsDoubleVault = function(ply, blockheight)
 
 	return blockheight > dp_vault_double:GetFloat() * plyHeight
 end
-
-action.CheckEnd = 0.5
 
 action.Check = function(ply)
 	-- 高爬检测范围短, 半个身位左右
@@ -303,7 +297,7 @@ action.Play = function(ply, data)
 	end
 end
 
-local function effectfunc_default(ply, data)
+local function effectstart_default(ply, data)
 	if data == nil then
 		-- 演示模式
 		if SERVER then
@@ -361,8 +355,8 @@ local effect, _ = UltiPar.RegisterEffect(
 		label = '#default'
 	}
 )
-effect.func = effectfunc_default
-effect.funcclear = UltiPar.emptyfunc
+effect.start = effectstart_default
+effect.clear = UltiPar.emptyfunc
 
 UltiPar.RegisterEffect(
 	actionName, 
@@ -375,83 +369,10 @@ UltiPar.RegisterEffect(
 )
 
 if CLIENT then
-	local triggertime = 0
-	local Trigger = UltiPar.Trigger
-	hook.Add('Think', 'dparkour.highclimb.trigger', function()
-		local ply = LocalPlayer()
-		if dp_workmode:GetBool() then return end
-		if dp_lh_keymode:GetBool() then 
-			if not ply:KeyDown(IN_JUMP) then 
-				return 
-			end
-		else
-			if not ply.dp_runtrigger_highclimb then 
-				return 
-			end
-		end
-
-		local curtime = CurTime()
-		if curtime - triggertime < dp_lh_per:GetFloat() then return end
-		triggertime = curtime
-
-		Trigger(LocalPlayer(), actionName)
-	end)
-
-	hook.Add('KeyPress', 'dparkour.highclimb.trigger', function(ply, key)
-		if key == IN_JUMP and dp_lh_keymode:GetBool() and not dp_workmode:GetBool() then 
-			Trigger(ply, actionName) 
-		end
-	end)
-
-
-	concommand.Add('+dp_highclimb_cl', function(ply)
-		ply.dp_runtrigger_highclimb = true
-		Trigger(LocalPlayer(), actionName)
-	end)
-
-	concommand.Add('-dp_highclimb_cl', function(ply)
-		ply.dp_runtrigger_highclimb = false
-	end)
-	
 	hook.Add('ShouldDisableLegs', 'dparkour.gmodleg', function()
 		return VMLegs and VMLegs:IsActive()
 	end)
 elseif SERVER then
-	local triggertime = 0
-	local Trigger = UltiPar.Trigger
-	hook.Add('PlayerPostThink', 'dparkour.highclimb.trigger', function(ply)
-		if not dp_workmode:GetBool() then return end
-		if dp_lh_keymode:GetBool() then 
-			if not ply:KeyDown(IN_JUMP) then 
-				return 
-			end
-		else
-			if not ply.dp_runtrigger_highclimb then 
-				return 
-			end
-		end
-
-		local curtime = CurTime()
-		if curtime - triggertime < dp_lh_per:GetFloat() then return end
-		triggertime = curtime
-
-		Trigger(ply, actionName)
-	end)
-
-	hook.Add('KeyPress', 'dparkour.highclimb.trigger', function(ply, key)
-		if key == IN_JUMP and dp_lh_keymode:GetBool() and dp_workmode:GetBool() then 
-			Trigger(ply, actionName) 
-		end
-	end)
-
-	concommand.Add('+dp_highclimb_sv', function(ply)
-		ply.dp_runtrigger_highclimb = true
-		Trigger(ply, actionName)
-	end)
-
-	concommand.Add('-dp_highclimb_sv', function(ply)
-		ply.dp_runtrigger_highclimb = false
-	end)
 end
 
 
