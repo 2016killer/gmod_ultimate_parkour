@@ -90,11 +90,11 @@ end
 
 UltiPar.EnableInterrupt(action, 'DParkour-Vault')
 ---------------------- 动作逻辑 ----------------------
-function action:GetSpeed(ply)
+function action:GetSpeed(ply, ref)
 	-- 返回爬楼初始速度、结束速度
 	return math.max(
 			ply:GetJumpPower() + 0.25 * (ply:KeyDown(IN_SPEED) and ply:GetRunSpeed() or ply:GetWalkSpeed()), 
-			ply:GetVelocity()[3]
+			ref[3]
 		),
 		0
 end
@@ -148,24 +148,39 @@ function action:Start(ply, data)
 	end
 
 	-- 检测一下落脚点能否站立
+	local plyvel = ply:GetVelocity()
 	local dis = (landpos - startpos):Length()
 	local dir = (landpos - startpos):GetNormal()
 	local needduck = UltiPar.GeneralLandSpaceCheck(ply, landpos)
-	local startspeed, endspeed = self:GetSpeed(ply)
+	local startspeed, endspeed = self:GetSpeed(ply, plyvel)
 	local duration = dis * 2 / (startspeed + endspeed)
 
+	-- 减少一下网络开销吧
+	ply.dp_data = {
+		startpos, 
+		landpos, 
+		blockheight, 
+		startspeed, 
+		endspeed, 
+		duration, 
+		dir,
+		1,
+		plyvel
+	}
+
 	UltiPar.SetMoveControl(ply, true, true, 
-		needduck and IN_JUMP or bit.bor(IN_JUMP, IN_DUCK), 
-		needduck and IN_DUCK or 0
-	)
-
+		needduck and IN_JUMP or bit.bor(IN_DUCK, IN_JUMP),
+		needduck and IN_DUCK or 0)
 	ply:SetMoveType(MOVETYPE_NOCLIP)
-
-	return {startpos, landpos, blockheight, startspeed, endspeed, duration, dir}
+	return {duration}
 end
 
 function action:Play(ply, mv, cmd, data, starttime)
-	local startpos, landpos, blockheight, startspeed, endspeed, duration, dir = unpack(data)
+	-- 保险一点
+	if not ply.dp_data then
+		return
+	end
+	local startpos, landpos, blockheight, startspeed, endspeed, duration, dir = unpack(ply.dp_data)
 
 	local dt = CurTime() - starttime
 
@@ -189,15 +204,20 @@ function action:Play(ply, mv, cmd, data, starttime)
 		)
 	)
 
-	if endflag then mv:SetOrigin(landpos) end
+	if endflag then 
+		mv:SetOrigin(landpos)
+	 end
 
 	return endflag
 end
 
-function action:Clear(ply)
+function action:Clear(ply, _, _, breaker)
 	if CLIENT then return end
-	ply:SetMoveType(MOVETYPE_WALK)
-	UltiPar.SetMoveControl(ply, false, false, 0, 0)
+	if not breaker or breaker.Name ~= 'DParkour-Vault' then
+		ply.dp_data = nil
+		ply:SetMoveType(MOVETYPE_WALK)
+		UltiPar.SetMoveControl(ply, false, false, 0, 0)
+	end
 end
 
 if CLIENT then

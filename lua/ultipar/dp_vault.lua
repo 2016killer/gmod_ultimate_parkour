@@ -86,7 +86,7 @@ local acitonHCName = 'DParkour-HighClimb'
 local actionLC, _ = UltiPar.Register(acitonLCName)
 local actionHC, _ = UltiPar.Register(acitonHCName)
 ---------------------- 动作逻辑 ----------------------
-function action:GetSpeed(ply, isdouble, breakin)
+function action:GetSpeed(ply, ref, isdouble, breakin)
 	-- 返回Vault初始速度、结束速度、过渡速度
 	if isdouble then
 		local startspeed, _ = breakin:GetSpeed(ply)
@@ -97,8 +97,7 @@ function action:GetSpeed(ply, isdouble, breakin)
 		local vaultDir = ply:EyeAngles():Forward()
 		vaultDir[3] = 0
 
-		local startspeed = ply:GetVelocity():Dot(vaultDir)
-
+		local startspeed = ref:Dot(vaultDir)
 		return startspeed,
 			math.max(
 				ply:GetJumpPower() + (ply:KeyDown(IN_SPEED) and ply:GetRunSpeed() or ply:GetWalkSpeed()),
@@ -119,8 +118,7 @@ function action:Check(ply, appenddata)
 		return
 	end
 
-	local startpos, landpos, blockheight = appenddata[1], appenddata[2], appenddata[3]
-	local type_ = appenddata[8]
+	local startpos, landpos, blockheight, startspeed, endspeed, duration, dir, type_, plyvel = unpack(appenddata)
 	
 	// print(startpos, landpos, blockheight, type_)
 
@@ -143,35 +141,29 @@ function action:Check(ply, appenddata)
 		return
 	end
 
-	print(vaultdata, blockheight, isdouble)
-
 	if isdouble then
 		return
 	else
 		local vaultpos = vaultdata[2]
-		local startspeed, endspeed = self:GetSpeed(ply, false)
+		local startspeed, endspeed = self:GetSpeed(ply, plyvel, false)
 		local dis = (vaultpos - startpos):Length()
 		local dir = (vaultpos - startpos):GetNormal()
 		local duration = dis * 2 / (startspeed + endspeed)
 
-		return {ply:GetPos(), vaultpos, vaultdata[3], startspeed, endspeed, duration, dir}
+		ply.dp_data = {ply:GetPos(), vaultpos, vaultdata[3], startspeed, endspeed, duration, dir}
+		return {duration}
 	end
 end
 
-function action:Start(ply)
-	UltiPar.SetMoveControl(ply, true, true, 
-		needduck and IN_JUMP or bit.bor(IN_JUMP, IN_DUCK), 
-		needduck and IN_DUCK or 0
-	)
-
-	ply:SetMoveType(MOVETYPE_NOCLIP)
-end
+action.Start = UltiPar.emptyfunc
 
 function action:Play(ply, mv, cmd, data, starttime)
-	cmd:ClearMovement()
-	mv:RemoveKeys(bit.bor(IN_JUMP, IN_DUCK, IN_FORWARD, IN_BACK))
-	mv:SetMaxSpeed(0)
-	local startpos, landpos, blockheight, startspeed, endspeed, duration, dir = unpack(data)
+	-- 保险一点
+	if not ply.dp_data then
+		return
+	end
+
+	local startpos, landpos, blockheight, startspeed, endspeed, duration, dir = unpack(ply.dp_data)
 	
 	local dt = CurTime() - starttime
     local acc = (endspeed - startspeed) / duration
@@ -183,8 +175,11 @@ function action:Play(ply, mv, cmd, data, starttime)
 
     if endflag then 
 		ply:SetMoveType(MOVETYPE_WALK)
-		// mv:SetOrigin(landpos) 
-		mv:SetVelocity(endspeed * dir)
+		if UltiPar.GeneralLandSpaceCheck(ply, ply:GetPos()) then
+			mv:SetOrigin(landpos)
+		end
+
+		mv:SetVelocity(endspeed * UltiPar.XYNormal(dir))
 	end
 
 	return endflag
@@ -200,8 +195,10 @@ end
 if SERVER then
 	hook.Add('UltiParExecute', 'dparkour.vault.trigger', function(ply, paction, checkresult, breakin, breakinresult)
 		timer.Simple(0, function()
-			checkresult[#checkresult + 1] = paction.Name == acitonLCName and 0 or 1
-			UltiPar.Trigger(ply, action, checkresult)
+			if not ply.dp_data then
+				return
+			end
+			UltiPar.Trigger(ply, action, ply.dp_data)
 		end)
 	end)
 

@@ -281,19 +281,6 @@ local function ToggleActionDisable(actionName)
 end
 
 ----------------移动控制
-local CMoveData = FindMetaTable( "CMoveData" )
-
-function CMoveData:RemoveKeys(keys)
-	-- Using bitwise operations to clear the key bits.
-	local newbuttons = bit.band(self:GetButtons(), bit.bnot(keys))
-	self:SetButtons(newbuttons)
-end
-
-function CMoveData:AddKeys(keys)
-	local newbuttons = bit.bor(self:GetButtons(), keys)
-	self:SetButtons(newbuttons)
-end
-
 local function SetMoveControl(ply, enable, ClearMovement, RemoveKeys, AddKeys)
 	if SERVER then
 		net.Start('UltiParMoveControl')
