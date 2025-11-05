@@ -31,6 +31,7 @@
 
 		Start = function(self, ply, checkdata, breakin, breakinresult)
 			-- 开始
+			-- 可以返回表覆盖checkdata
 		end,
 
 		Play = function(self, ply, mv, cmd, checkdata, starttime)
@@ -189,7 +190,8 @@ local function RegisterEffect(actionName, effectName, effect)
 		action.Effects[effectName] = effect
 		exist = false
 	end
-
+	
+	effect.Name = effectName
 	effect.start = effect.start or function(ply, checkdata, breakin, breakinresult)
 		-- 特效
 		printdata(
@@ -330,17 +332,18 @@ end
 local function Execute(ply, action, checkresult, breakin, breakinresult)
 	-- [StartEffect, Start]
 	if not action then return end
-	hook.Run('UltiParExecute', ply, action, checkresult, breakin, breakinresult)
-
+	
 	-- 执行动作
-	action:Start(ply, checkresult, breakin, breakinresult)
+	checkresult = action:Start(ply, checkresult, breakin, breakinresult) or checkresult
 
 	-- 执行特效
 	local effect = GetPlayerEffect(ply, action)
-	if effect then effect.start(ply, checkresult, breakin, breakinresult) end
+	if effect then effect:start(ply, checkresult, breakin, breakinresult) end
 
 	-- 标记播放
 	SetCurrentData(ply, action, checkresult, CurTime())
+
+	hook.Run('UltiParExecute', ply, action, checkresult, breakin, breakinresult)
 end 
 
 local function End(ply, action, checkresult, checkendresult, breaker, breakresult)
@@ -351,17 +354,17 @@ local function End(ply, action, checkresult, checkendresult, breaker, breakresul
 
 	if not action then return end
 	
-	hook.Run('UltiParEnd', ply, action, checkresult, checkendresult, breaker, breakresult)
-
 	action:Clear(ply, checkresult, checkendresult, breaker, breakresult)
 
 	local effect = GetPlayerEffect(ply, action)
-	if effect then effect.clear(ply, checkresult, checkendresult, breaker, breakresult) end
+	if effect then effect:clear(ply, checkresult, checkendresult, breaker, breakresult) end
 
 	local currentAciton = GetCurrentAction(ply)
 	if currentAciton and currentAciton.Name == action.Name then 
 		SetCurrentData(ply)
 	end
+
+	hook.Run('UltiParEnd', ply, action, checkresult, checkendresult, breaker, breakresult)
 end
 
 local function Trigger(ply, action, appenddata, checkresult)
@@ -374,7 +377,7 @@ local function Trigger(ply, action, appenddata, checkresult)
 	local actionName = action.Name
 
 	if IsActionDisable(actionName) then
-		print(string.format('Action "%s" is disabled.', actionName))
+		// print(string.format('Action "%s" is disabled.', actionName))
 		return
 	end
 
@@ -383,7 +386,7 @@ local function Trigger(ply, action, appenddata, checkresult)
 	-- 检查是否允许中断当前动作
 	if currentAciton and not AllowInterrupt(ply, currentAciton, actionName) then 
 		-- 不允许中断当前动作
-		print(string.format('Action "%s" is not allow "%s" interrupt.', currentAciton.Name, actionName))
+		// print(string.format('Action "%s" is not allow "%s" interrupt.', currentAciton.Name, actionName))
 		return 
 	end
 
@@ -446,7 +449,7 @@ if SERVER then
 		-- 异常处理, 清除移动数据
 		if not succ then
 			ForceEnd(ply)
-			ErrorNoHalt(string.format('Action "%s" Play error: %s', action.Name, err))
+			ErrorNoHalt(string.format('Action "%s" Play error: %s\n', action.Name, err))
 			return
 		end
 
@@ -470,7 +473,7 @@ if SERVER then
 		local actionName = net.ReadString()
 		local checkresult = net.ReadTable()
 
-		print('net Receive UltiParExecute')
+		// print('net Receive UltiParExecute')
 		local action = GetAction(actionName)
 		if not action then return end
 
@@ -496,7 +499,7 @@ elseif CLIENT then
 		local currentAcitonName = net.ReadString()
 		local currentCheckresult = net.ReadTable()
 
-		print('net Receive UltiParExecute')
+		// print('net Receive UltiParExecute')
 		ply = LocalPlayer()
 		local currentAciton = GetAction(currentAcitonName)
 		local action = GetAction(actionName)
@@ -517,7 +520,7 @@ elseif CLIENT then
 		local forceEnd = net.ReadBool()
 		local endresult = not forceEnd and net.ReadTable() or nil
 		
-		print('net Receive UltiParEnd')
+		// print('net Receive UltiParEnd')
 		ply = LocalPlayer()
 		local action = GetAction(actionName)
 		End(ply, action, checkresult, endresult, forceEnd or nil, nil)
@@ -660,7 +663,7 @@ if CLIENT then
 						UltiPar.SaveEffectConfigToDisk(effectConfig)
 						effecttree:RefreshNode()
 
-						UltiPar.EffectTest(action.Name, node.effect)
+						UltiPar.EffectTest(LocalPlayer(), action.Name, node.effect)
 					end
 				end
 			end

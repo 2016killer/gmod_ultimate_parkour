@@ -5,25 +5,25 @@
 
 UltiPar = UltiPar or {}
 
-UltiPar.EffectTest = function(actionName, effect)
-	local action = GetAction(actionName)
+UltiPar.EffectTest = function(ply, actionName, effectName)
+	local action = UltiPar.GetAction(actionName)
 	if not action then
 		return
 	end
 
-	local effect = GetEffect(action, effect)
+	local effect = UltiPar.GetEffect(action, effectName)
 	if not effect then
 		return
 	end
 
-	effect.start(ply, nil)
+	effect:start(ply, nil)
 	timer.Simple(1, function()
-		effect.clear(ply, nil)
+		effect:clear(ply, nil)
 	end)
 	if CLIENT then
 		net.Start('UltiParEffectTest')
 			net.WriteString(actionName)
-			net.WriteString(effect)
+			net.WriteString(effectName)
 		net.SendToServer()
 	end
 end
@@ -34,9 +34,9 @@ if SERVER then
 
 	net.Receive('UltiParEffectTest', function(len, ply)
 		local actionName = net.ReadString()
-		local effect = net.ReadString()
+		local effectName = net.ReadString()
 		
-		UltiPar.EffectTest(actionName, effect)
+		UltiPar.EffectTest(ply, actionName, effectName)
 	end)
 
 	net.Receive('UltiParEffectConfig', function(len, ply)
@@ -167,5 +167,4 @@ elseif CLIENT then
 	UltiPar.LoadEffectFromDisk = LoadEffectFromDisk
 	UltiPar.SendEffectConfigToServer = SendEffectConfigToServer
 	UltiPar.SaveEffectConfigToDisk = SaveEffectConfigToDisk
-	UltiPar.EffectTest = EffectTest
 end

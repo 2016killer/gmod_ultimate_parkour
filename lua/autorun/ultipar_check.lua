@@ -2,12 +2,10 @@
 	作者:白狼
 	2025 11 1
 
-	使用ActionSet存储动作
-	ActionSet以及Action.Effects具有单向写入的性质, 不支持覆盖。
-	在这里, 我们使用API Register和RegisterEffect注册动作和特效, 而不是直接操作ActionSet
 --]]
 
 local function XYNormal(v)
+	local v = Vector(v)
 	v[3] = 0
 	v:Normalize()
 	return v
@@ -31,10 +29,6 @@ UltiPar.GeneralClimbCheck = function(ply, appenddata)
 
 	-- {落脚点检测数据, 障碍高度}
 
-	if ply:GetMoveType() == MOVETYPE_NOCLIP or ply:InVehicle() or !ply:Alive() then 
-		return
-	end
-	
 	local eyeDir = XYNormal(ply:GetForward())
 	local pos = ply:GetPos() + unitzvec
 
@@ -144,10 +138,6 @@ UltiPar.GeneralVaultCheck = function(ply, appenddata)
 
 	-- 翻越不需要检查落脚点是否在斜坡上
 
-	if not ply:KeyDown(IN_FORWARD) or ply:KeyDown(IN_DUCK) then 
-		return
-	end
-	
 	-- 假设蹲伏不会改变玩家宽度
 	local landdata = appenddata.landdata
 	local dmins, dmaxs = ply:GetHullDuck()
@@ -234,3 +224,6 @@ UltiPar.GeneralVaultCheck = function(ply, appenddata)
 		hchecktrace.HitPos[3] - pos[3]
 	}
 end
+
+UltiPar.XYNormal = XYNormal
+UltiPar.unitzvec = unitzvec
