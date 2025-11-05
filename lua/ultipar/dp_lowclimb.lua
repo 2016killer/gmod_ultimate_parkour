@@ -87,6 +87,8 @@ if CLIENT then
 else
 	convars = nil
 end
+
+UltiPar.EnableInterrupt(action, 'DParkour-Vault')
 ---------------------- 动作逻辑 ----------------------
 function action:GetSpeed(ply)
 	-- 返回爬楼初始速度、结束速度
@@ -99,6 +101,11 @@ end
 
 function action:Check(ply)
 	-- 低爬检测范围更长, 两个身位左右
+
+	if ply:GetMoveType() == MOVETYPE_NOCLIP or ply:InVehicle() or !ply:Alive() then 
+		return
+	end
+
 	local bmins, bmaxs = ply:GetCollisionBounds()
 	local plyWidth = math.max(bmaxs[1] - bmins[1], bmaxs[2] - bmins[2])
 	local plyHeight = bmaxs[3] - bmins[3]
@@ -153,25 +160,19 @@ function action:Start(ply, data)
 	)
 
 	ply:SetMoveType(MOVETYPE_NOCLIP)
-	return {startpos, landpos, startspeed, endspeed, duration, dir}
+
+	return {startpos, landpos, blockheight, startspeed, endspeed, duration, dir}
 end
 
 function action:Play(ply, mv, cmd, data, starttime)
-	local startpos, landpos, startspeed, endspeed, duration, dir = unpack(data)
+	local startpos, landpos, blockheight, startspeed, endspeed, duration, dir = unpack(data)
 
 	local dt = CurTime() - starttime
 
     local acc = (endspeed - startspeed) / duration
-	local target = startpos + (0.5 * acc * dt * dt + startspeed * dt) * dir
 	local endflag = dt > duration
 
-	mv:SetOrigin(
-		LerpVector(
-			math.Clamp(dt / 0.1, 0, 1), 
-			ply:GetPos(), 
-			target
-		)
-	)
+	mv:SetOrigin(startpos + (0.5 * acc * dt * dt + startspeed * dt) * dir)
 
     if endflag then mv:SetOrigin(landpos) end
 

@@ -130,7 +130,7 @@ UltiPar.GeneralVaultCheck = function(ply, appenddata)
 	-- 通用翻越检查, 一般是接在GeneralClimbCheck后面
 	-- 从落脚点开始检测, 主要检测障碍物的镜像面是否符合条件
 
-	-- appenddata.landdata {落脚点位置, 障碍高度} 由GeneralClimbCheck返回
+	-- appenddata.landdata {起始位置, 落脚点位置, 障碍高度} 由GeneralClimbCheck返回
 	-- appenddata.hlen 检测的水平范围
 	-- appenddata.vlen 检测的垂直范围
 
