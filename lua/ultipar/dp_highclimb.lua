@@ -213,7 +213,7 @@ end
 
 function action:Clear(ply, _, _, breaker)
 	if CLIENT then return end
-	if not breaker or breaker.Name ~= 'DParkour-Vault' then
+	if not breaker or isbool(breaker) or breaker.Name ~= 'DParkour-Vault' then
 		ply.dp_data = nil
 		ply:SetMoveType(MOVETYPE_WALK)
 		UltiPar.SetMoveControl(ply, false, false, 0, 0)
