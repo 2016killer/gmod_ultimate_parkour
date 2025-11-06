@@ -120,6 +120,10 @@ function action:Check(ply, appenddata)
 
 	local startpos, landpos, blockheight, startspeed, endspeed, duration, dir, type_, plyvel = unpack(appenddata)
 	
+	if not (type_ == 1 and dp_hc_vault or dp_lc_vault):GetBool() then
+		return
+	end
+
 	// print(startpos, landpos, blockheight, type_)
 
 	local bmins, bmaxs = ply:GetHull()
@@ -127,7 +131,7 @@ function action:Check(ply, appenddata)
 	local plyHeight = bmaxs[3] - bmins[3]
 
 	local vaultdata = UltiPar.GeneralVaultCheck(ply, {
-		hlen = dp_lc_vault_hlen:GetFloat() * plyWidth,
+		hlen = (type_ == 1 and dp_hc_vault_hlen or dp_lc_vault_hlen):GetFloat() * plyWidth,
 		vlen = dp_vault_vlen:GetFloat() * plyHeight,
 		landdata = appenddata,
 	})
