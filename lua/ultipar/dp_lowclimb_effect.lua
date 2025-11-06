@@ -4,9 +4,7 @@
 ]]--
 
 -- ==================== 低爬动作特效 ===============
-
 local actionName = 'DParkour-LowClimb'
-local action, _ = UltiPar.Register(actionName)
 
 local function effectstart_default(self, ply, data)
     if SERVER then
@@ -40,3 +38,8 @@ UltiPar.RegisterEffect(
     'SP-VManip-白狼', 
     effect2
 )
+
+actionName = nil
+effect = nil
+effectstart_default = nil
+effect2 = nil

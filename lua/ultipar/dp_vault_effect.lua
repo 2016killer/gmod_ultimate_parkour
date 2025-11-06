@@ -4,9 +4,7 @@
 ]]--
 
 -- ====================  翻越动作特效 ===============
-
 local actionName = 'DParkour-Vault'
-local action, _ = UltiPar.Register(actionName)
 
 local function effectstart_default(self, ply, data)
     local duration, type_ = unpack(data and (data) or {})
@@ -55,3 +53,8 @@ UltiPar.RegisterEffect(
     'SP-VManip-白狼', 
     effect2
 )
+
+actionName = nil
+effect = nil
+effectstart_default = nil
+effect2 = nil

@@ -4,7 +4,6 @@
 ]]--
 
 -- ==================== 高爬动作特效 ====================
-
 local actionName = 'DParkour-HighClimb'
 
 local function effectstart_default(self, ply, data)
@@ -42,3 +41,8 @@ UltiPar.RegisterEffect(
     'SP-VManip-白狼', 
     effect2
 )
+
+actionName = nil
+effect = nil
+effectstart_default = nil
+effect2 = nil
