@@ -105,10 +105,10 @@ local function GetAction(actionName)
 	return ActionSet[actionName]
 end
 
-local function GetEffect(action, effect)
+local function GetEffect(action, effectName)
 	-- 获取特效
 	-- 返回特效表, 如果不存在则返回nil
-	return action.Effects[effect]
+	return action.Effects[effectName]
 end
 
 local function Register(name, action)
@@ -284,7 +284,12 @@ end
 
 local function GetPlayerEffect(ply, action)
 	-- 获取指定玩家当前动作的特效
-	return action.Effects[ply.ultipar_effect_config[action.Name] or 'default']
+	if ply.ultipar_effect_config[action.Name] == 'Custom' then
+		local CustomEffects = ply.ultipar_effect_config['CUSTOM']
+		return CustomEffects and CustomEffects[action.Name] or nil
+	else
+		return action.Effects[ply.ultipar_effect_config[action.Name] or 'default']
+	end
 end
 
 local function IsActionDisable(actionName)
@@ -660,35 +665,121 @@ if CLIENT then
 
 
 
-	UltiPar.CreatePropertyPanel = function(props)
+	UltiPar.CreateEffectPropertyPanel = function(actionName, effect, effecttree)
 		local panel = vgui.Create('DForm')
-		local editable = !!props.link
+		local iscustom = !!effect.linkName
+		if iscustom then
+			for k, v in pairs(effect) do
+				if k == 'label' or k == 'linkName' or k == 'Name' then
+					continue
+				elseif isstring(v) then
+					local textEntry = panel:TextEntry(k .. ':', '')
+					textEntry:SetText(v)
+					textEntry.OnChange = function(self)
+						local val = self:GetText()
+						print(k, val)
+						effect[k] = val
+					end
+				elseif isnumber(v) then
+					local numEntry = panel:TextEntry(k .. ':', '')
+					numEntry:SetText(tostring(v))
+					numEntry.OnChange = function(self)
+						local val = tonumber(self:GetText()) or 0
+						print(k, val)
+						effect[k] = val
+					end
+				elseif isbool(v) then
+					local checkBox = panel:CheckBox(k .. ':', '')
+					checkBox:SetChecked(v)
+					checkBox.OnChange = function(self, checked)
+						print(k, checked)
+						effect[k] = checked
+					end
+				elseif isvector(v) or isangle(v) then
+					local vecEntry = panel:TextEntry(k .. ':', '')
+					vecEntry:SetText(util.TableToJSON({v}))
+					vecEntry.OnChange = function(self)
+						local val = util.JSONToTable(self:GetText())
+						if not val or not val[1] or 
+							(not isvector(val[1]) and not isangle(val[1])) then
+							return
+						end
 
-		// local customButton = panel:Button('#ultipar.custom')
-		// customButton:SetText('#ultipar.custom')
-		// customButton:SetIcon('icon64/tool.png')
-		
-		for k, v in pairs(props) do
-			if not editable then 
-				panel:Help(k .. '=' .. PropertyViewText(v))
-			elseif isstring(v) then
-				local textEntry = panel:TextEntry(k, '')
-			elseif isnumber(v) then
-				local numSlider = panel:NumSlider(k, '', v.min or 0, v.max or 1, v.decimals or 2)
-				numSlider:SetEditable(editable)
-			elseif isbool(v) then
-				local checkBox = panel:CheckBox(k, '')
+						val = val[1]
+						print(k, val)
+						effect[k] = val
+					end
+				end
 			end
+
+			local saveButton = vgui.Create('DButton')
+			saveButton:SetText('#ultipar.save')
+			saveButton.DoClick = function()
+				local effectConfig = LocalPlayer().ultipar_effect_config
+
+				effectConfig[actionName] = 'Custom'
+				effectConfig['CUSTOM'] = effectConfig['CUSTOM'] or {}
+				effectConfig['CUSTOM'][actionName] = effect
+
+				UltiPar.InitCustomEffect(actionName, effect)
+				UltiPar.SaveEffectConfigToDisk(effectConfig)
+				UltiPar.SendEffectConfigToServer(effectConfig)
+				// PrintTable(effectConfig)
+			end
+
+			local playButton = panel:Button('#ultipar.playeffect')
+			playButton.DoClick = function()
+				UltiPar.EffectTest(LocalPlayer(), actionName, 'Custom')
+				saveButton:DoClick()
+			end
+
+			panel:AddItem(saveButton)
+
+			panel:SetLabel(string.format('%s %s %s', 
+				language.GetPhrase('#ultipar.custom'), 
+				language.GetPhrase('#ultipar.property'),
+				language.GetPhrase('#ultipar.link') .. ':' .. effect.linkName
+			))
+		else
+			local customButton = panel:Button('#ultipar.custom')
+			customButton:SetText('#ultipar.custom')
+			customButton:SetIcon('icon64/tool.png')
+
+			customButton.DoClick = function()
+				local effectConfig = LocalPlayer().ultipar_effect_config
+				local custom = UltiPar.CreateCustomEffect(actionName, effect.Name)
+	
+				effectConfig[actionName] = 'Custom'
+				effectConfig['CUSTOM'] = effectConfig['CUSTOM'] or {}
+				effectConfig['CUSTOM'][actionName] = custom
+
+				UltiPar.InitCustomEffect(actionName, custom)
+				UltiPar.SaveEffectConfigToDisk(effectConfig)
+				UltiPar.SendEffectConfigToServer(effectConfig)
+				// PrintTable(effectConfig)
+				effecttree.Effects['Custom'] = custom
+				effecttree:RefreshNode()
+			end
+			
+			for k, v in pairs(effect) do
+				panel:Help(k .. '=' .. PropertyViewText(v))
+			end
+
+			panel:SetLabel(string.format('%s %s %s', 
+				effect.Name, 
+				language.GetPhrase('#ultipar.property'),
+				''
+			))
 		end
 
-		return panel, customButton
+		return panel
 	end
 
-
+	
 	UltiPar.CreateActionEditor = function(actionName)
 		local action = UltiPar.GetAction(actionName)
 
-		local width, height = 500, 300
+		local width, height = 600, 400
 		local Window = vgui.Create('DFrame')
 		Window:SetTitle(language.GetPhrase('ultipar.actionmanager') .. '  ' .. actionName)
 		Window:MakePopup()
@@ -701,6 +792,12 @@ if CLIENT then
 		Tabs:Dock(FILL)
 
 		local effectConfig = LocalPlayer().ultipar_effect_config
+		local customEffect = (effectConfig['CUSTOM'] or {})[actionName]
+		
+		local Effects = table.Copy(action.Effects)
+		if customEffect then Effects['Custom'] = customEffect end
+		
+
 		if istable(effectConfig) then
 			local UserPanel = vgui.Create('DPanel', Tabs)
 			UserPanel:Dock(FILL)
@@ -710,15 +807,18 @@ if CLIENT then
 			div:SetDividerWidth(10)
 			
 			local effecttree = vgui.Create('DTree', UserPanel)
+			effecttree.Effects = Effects
 			div:SetLeft(effecttree)
 			div:SetLeftWidth(0.5 * width)
 	
 			effecttree.RefreshNode = function(self)
 				self:Clear()
-				for k, v in pairs(action.Effects) do
+				if div:GetRight() then div:GetRight():Remove() end
+				for k, v in pairs(Effects) do
 					local icon
 					if effectConfig[action.Name] == k then
 						icon = 'icon16/accept.png'
+						self.currentEffect = k
 					else
 						icon = isstring(v.icon) and v.icon or 'icon16/attach.png'
 					end
@@ -736,20 +836,15 @@ if CLIENT then
 					playButton:SetIcon('icon16/cd_go.png')
 					
 					playButton.DoClick = function()
-						effectConfig[action.Name] = node.effect
-						
-						UltiPar.SendEffectConfigToServer(effectConfig)
-						UltiPar.SaveEffectConfigToDisk(effectConfig)
-						effecttree:RefreshNode()
-
 						UltiPar.EffectTest(LocalPlayer(), action.Name, node.effect)
 					end
 				end
 			end
 
-			local curSelectedNode = nil 
+			local curSelectedNode = nil
+			local clicktime = 0
 			effecttree.OnNodeSelected = function(self, selNode)
-				if curSelectedNode == selNode then
+				if CurTime() - clicktime < 0.2 and curSelectedNode == selNode and self.currentEffect ~= selNode.effect then
 					effectConfig[action.Name] = selNode.effect
 					
 					UltiPar.SendEffectConfigToServer(effectConfig)
@@ -762,31 +857,20 @@ if CLIENT then
 						div:GetRight():Remove()
 					end
 
-					local effect = UltiPar.GetEffect(action, selNode.effect)
-					local propPanel, customButton = UltiPar.CreatePropertyPanel(effect)
+					local effect = Effects[selNode.effect]
+			
+					local propPanel = UltiPar.CreateEffectPropertyPanel(actionName, effect, effecttree)
 					propPanel:SetParent(UserPanel)
-					propPanel:SetLabel(selNode.effect .. ' ' .. language.GetPhrase('#ultipar.property'))
+					
 					local rightwidth = width - div:GetLeftWidth()
 					rightwidth = rightwidth < 80 and 200 or rightwidth
 
 					div:SetRight(propPanel)
 					div:SetLeftWidth(width - rightwidth)
 
-					// customButton.DoClick = function()
-					// 	local target = UltiPar.GetEffect(action, selNode.effect)
-						
-					// 	local custom = table.Copy(target)
-					// 	custom.Name = custom.Name .. '_custom'
-					// 	custom.label = language.GetPhrase(custom.label) .. '_' .. language.GetPhrase('#ultipar.custom')
-						
-					// 	local customNode = self:AddNode(custom.Name, 'icon32/color_picker.png')
-					// 	customNode.effect = custom.Name
-
-					// 	self:OnNodeSelected(customNode)
-					// end
-
 					curSelectedNode = selNode
 				end
+				clicktime = CurTime()
 			end
 
 			effecttree:RefreshNode()

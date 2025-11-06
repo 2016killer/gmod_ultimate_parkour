@@ -6,12 +6,15 @@
 UltiPar = UltiPar or {}
 
 UltiPar.EffectTest = function(ply, actionName, effectName)
+	
 	local action = UltiPar.GetAction(actionName)
 	if not action then
 		return
 	end
 
-	local effect = UltiPar.GetEffect(action, effectName)
+	local CustomEffects = ply.ultipar_effect_config['CUSTOM'] or {}
+	local effect = UltiPar.GetEffect(action, effectName) or CustomEffects[actionName]
+	
 	if not effect then
 		return
 	end
@@ -28,6 +31,56 @@ UltiPar.EffectTest = function(ply, actionName, effectName)
 	end
 end
 
+UltiPar.InitCustomEffect = function(actionName, custom)
+	custom.Name = 'Custom'
+	local linkName = custom.linkName
+	if not isstring(linkName) then
+		print(string.format('[UltiPar]: register custom effect failed, action "%s" linkName "%s" is not string', actionName, linkName))
+		return false
+	end
+
+	local action = UltiPar.GetAction(actionName)
+	if not action then
+		print(string.format('[UltiPar]: register custom effect failed, action "%s" not found', actionName))
+		return false
+	end
+
+	local linkEffect = UltiPar.GetEffect(action, linkName)
+	if not linkEffect then
+		print(string.format('[UltiPar]: register custom effect failed, action "%s" effect "%s" not found', actionName, linkName))
+		return false
+	end
+
+	for k, v in pairs(linkEffect) do
+		if custom[k] == nil then custom[k] = v end
+	end
+
+	return true
+end
+
+UltiPar.CreateCustomEffect = function(actionName, effectName)
+	local action = UltiPar.GetAction(actionName)
+	if not action then
+		print(string.format('[UltiPar]: copy action "%s" effect "%s" to custom failed, action not found', actionName, effectName))
+		return nil
+	end
+
+	local effect = UltiPar.GetEffect(action, effectName)
+	if not effect then
+		print(string.format('[UltiPar]: copy action "%s" effect "%s" to custom failed, effect not found', actionName, effectName))
+		return nil
+	end
+
+	local custom = {
+		Name = 'Custom',
+		label = '#ultipar.custom',
+		linkName = effectName
+	}
+
+	return custom
+end
+
+
 if SERVER then
 	util.AddNetworkString('UltiParEffectConfig')
 	util.AddNetworkString('UltiParEffectTest')
@@ -40,7 +93,21 @@ if SERVER then
 	end)
 
 	net.Receive('UltiParEffectConfig', function(len, ply)
-		local effectConfig = net.ReadTable()
+		local content = net.ReadString()
+		// content = util.Decompress(content)
+
+		local effectConfig = util.JSONToTable(content or '')
+		if not istable(effectConfig) then
+			print('[UltiPar]: receive effect config is not table')
+			return
+		end
+
+		-- 初始化自定义特效
+		local CustomEffects = effectConfig['CUSTOM'] or {}
+		for k, v in pairs(CustomEffects) do
+			UltiPar.InitCustomEffect(k, v)
+		end
+
 		ply.ultipar_effect_config = effectConfig or ply.ultipar_effect_config
 	end)
 elseif CLIENT then
@@ -67,14 +134,22 @@ elseif CLIENT then
 	local function SaveEffectConfigToDisk(effectConfig, path)
 		-- 保存动作的特效配置到磁盘
 		path = path or 'ultipar_effect_config.json'
-		local content = util.TableToJSON(effectConfig)
+		local content = util.TableToJSON(effectConfig, true)
 		local succ = file.Write(path, content)
 		print(string.format('[UltiPar]: save effect config to disk %s, result: %s', path, succ))
 	end
 
 	local function SendEffectConfigToServer(effectConfig)
+		-- 为了过滤掉一些不能序列化的数据
+		local content = util.TableToJSON(effectConfig)
+		if not content then
+			print('[UltiPar]: send effect config to server failed, content is not valid json')
+			return
+		end
+		// content = util.Compress(content)
+
 		net.Start('UltiParEffectConfig')
-			net.WriteTable(effectConfig)
+			net.WriteString(content)
 		net.SendToServer()
 	end
 
@@ -86,6 +161,13 @@ elseif CLIENT then
 			else
 				print('[UltiPar]: use default effect config')
 			end
+
+			-- 初始化自定义特效
+			local CustomEffects = effectConfig['CUSTOM'] or {}
+			for k, v in pairs(CustomEffects) do
+				UltiPar.InitCustomEffect(k, v)
+			end
+
 			LocalPlayer().ultipar_effect_config = effectConfig or {}
 			 
 			hook.Remove('KeyPress', 'ultipar.init.effect')
