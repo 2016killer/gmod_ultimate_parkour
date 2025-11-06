@@ -446,7 +446,7 @@ end
 
 local function ForceEnd(ply)
 	local action, checkresult, starttime = GetCurrentData(ply)
-	print(action, checkresult, starttime)
+	
 	SetCurrentData(ply)
 	SetMoveControl(ply, false, false, 0, 0)
 
