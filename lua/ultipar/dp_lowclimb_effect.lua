@@ -6,7 +6,7 @@
 -- ==================== 低爬动作特效 ===============
 local actionName = 'DParkour-LowClimb'
 
-local function effectstart_default(self, ply, data)
+local function effectstart_default(self, ply, _)
     if SERVER then
         return
     elseif CLIENT then

@@ -175,7 +175,7 @@ function action:Start(ply, data)
 	return {duration}
 end
 
-function action:Play(ply, mv, cmd, data, starttime)
+function action:Play(ply, mv, cmd, _, starttime)
 	-- 保险一点
 	if not ply.dp_data then
 		return

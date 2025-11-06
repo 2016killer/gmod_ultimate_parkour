@@ -6,7 +6,7 @@
 -- ==================== 高爬动作特效 ====================
 local actionName = 'DParkour-HighClimb'
 
-local function effectstart_default(self, ply, data)
+local function effectstart_default(self, ply, _)
 	if SERVER then
 		-- 防止CalcView不兼容, 还是用ViewPunch吧
 		ply:ViewPunch(self.angpunch_first)

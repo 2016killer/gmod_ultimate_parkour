@@ -357,7 +357,8 @@ local function Execute(ply, action, checkresult, breakin, breakinresult)
 	
 	-- 执行动作
 	checkresult = action:Start(ply, checkresult, breakin, breakinresult) or checkresult
-
+	checkresult = istable(checkresult) and checkresult or {checkresult}
+	
 	-- 执行特效
 	local effect = GetPlayerEffect(ply, action)
 	if effect then effect:start(ply, checkresult, breakin, breakinresult) end
@@ -445,6 +446,7 @@ end
 
 local function ForceEnd(ply)
 	local action, checkresult, starttime = GetCurrentData(ply)
+	print(action, checkresult, starttime)
 	SetCurrentData(ply)
 	SetMoveControl(ply, false, false, 0, 0)
 
@@ -470,8 +472,8 @@ if SERVER then
 		local succ, err = pcall(action.Play, action, ply, mv, cmd, checkresult, starttime)
 		-- 异常处理, 清除移动数据
 		if not succ then
-			ForceEnd(ply)
 			ErrorNoHalt(string.format('Action "%s" Play error: %s\n', action.Name, err))
+			ForceEnd(ply)
 			return
 		end
 

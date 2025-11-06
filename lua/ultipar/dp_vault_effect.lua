@@ -7,7 +7,7 @@
 local actionName = 'DParkour-Vault'
 
 local function effectstart_default(self, ply, data)
-    local duration, type_ = unpack(data and (data) or {})
+    local duration, type_ = unpack(istable(data) and data or {})
     if SERVER then
         return
     elseif CLIENT then
