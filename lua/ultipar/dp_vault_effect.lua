@@ -13,7 +13,8 @@ local function effectstart_default(self, ply, data)
     elseif CLIENT then
         if type_ then
             local waittime = type_ == 1 and 0.1 or 0
-            
+            UltiPar.SetVecPunchVel(self.vecpunchfirst)
+            UltiPar.SetAngPunchVel(self.angpunchfirst)
             timer.Simple(waittime + duration, function()
                 UltiPar.SetVecPunchVel(self.vecpunch)
                 UltiPar.SetAngPunchVel(self.angpunch)
@@ -41,6 +42,8 @@ local effect, _ = UltiPar.RegisterEffect(
         sound = 'dparkour/bailang/vault.mp3',
         vecpunch = Vector(100, 0, -10),
         angpunch = Vector(0, 0, -100),
+        angpunchfirst = Vector(100, 0, 0),
+        vecpunchfirst = Vector(0, 0, 25),
 	}
 )
 effect.start = effectstart_default

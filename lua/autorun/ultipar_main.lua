@@ -367,6 +367,7 @@ local function Execute(ply, action, checkresult, breakin, breakinresult)
 	SetCurrentData(ply, action, checkresult, CurTime())
 
 	hook.Run('UltiParExecute', ply, action, checkresult, breakin, breakinresult)
+	return checkresult
 end 
 
 local function End(ply, action, checkresult, checkendresult, breaker, breakresult)
@@ -425,7 +426,7 @@ local function Trigger(ply, action, appenddata, checkresult)
 			End(ply, currentAciton, currentCheckresult, nil, action, checkresult)
 		end
 
-		Execute(ply, action, checkresult, currentAciton, currentCheckresult)
+		checkresult = Execute(ply, action, checkresult, currentAciton, currentCheckresult)
 
 		-- 为减少传输次数, 中断数据包与播放数据包合并发送
 		net.Start('UltiParExecute')
@@ -535,7 +536,7 @@ elseif CLIENT then
 			currentCheckresult = nil
 		end
 
-		Execute(ply, action, checkresult, currentAciton, currentCheckresult)
+		checkresult = Execute(ply, action, checkresult, currentAciton, currentCheckresult)
 	end)
 
 	net.Receive('UltiParEnd', function(len, ply)
