@@ -637,14 +637,62 @@ if CLIENT then
 		end
 	end
 
+	local function PropertyViewText(v)
+		if isstring(v) then
+			return string.format('"%s"', v)
+		elseif isnumber(v) then
+			return string.format('%s', v)
+		elseif isbool(v) then
+			return string.format('%s', v and 'true' or 'false')
+		elseif isvector(v) or isangle(v) then
+			return string.format('[%s]', v)
+		elseif isfunction(v) then
+			return string.format('%s', 'function')
+		elseif ismatrix(v) then
+			return string.format('[%s]', v)
+		elseif istable(v) then
+			return string.format('%s', 'table')
+		end
+
+		return ''
+	end
+
+
+
+	UltiPar.CreatePropertyPanel = function(props)
+		local panel = vgui.Create('DForm')
+		local editable = !!props.link
+
+		// local customButton = panel:Button('#ultipar.custom')
+		// customButton:SetText('#ultipar.custom')
+		// customButton:SetIcon('icon64/tool.png')
+		
+		for k, v in pairs(props) do
+			if not editable then 
+				panel:Help(k .. '=' .. PropertyViewText(v))
+			elseif isstring(v) then
+				local textEntry = panel:TextEntry(k, '')
+			elseif isnumber(v) then
+				local numSlider = panel:NumSlider(k, '', v.min or 0, v.max or 1, v.decimals or 2)
+				numSlider:SetEditable(editable)
+			elseif isbool(v) then
+				local checkBox = panel:CheckBox(k, '')
+			end
+		end
+
+		return panel, customButton
+	end
+
+
 	UltiPar.CreateActionEditor = function(actionName)
 		local action = UltiPar.GetAction(actionName)
 
+		local width, height = 500, 300
 		local Window = vgui.Create('DFrame')
 		Window:SetTitle(language.GetPhrase('ultipar.actionmanager') .. '  ' .. actionName)
 		Window:MakePopup()
 		Window:SetSizable(true)
-		Window:SetSize(400, 300)
+		Window:SetSize(width, height)
 		Window:Center()
 		Window:SetDeleteOnClose(true)
 
@@ -656,9 +704,14 @@ if CLIENT then
 			local UserPanel = vgui.Create('DPanel', Tabs)
 			UserPanel:Dock(FILL)
 
+			local div = vgui.Create('DHorizontalDivider', UserPanel)
+			div:Dock(FILL)
+			div:SetDividerWidth(10)
+			
 			local effecttree = vgui.Create('DTree', UserPanel)
-			effecttree:Dock(FILL)
-
+			div:SetLeft(effecttree)
+			div:SetLeftWidth(0.5 * width)
+	
 			effecttree.RefreshNode = function(self)
 				self:Clear()
 				for k, v in pairs(action.Effects) do
@@ -678,7 +731,7 @@ if CLIENT then
 					// playButton:SetPos(170, 0)
 					playButton:Dock(RIGHT)
 					
-					playButton:SetText('')
+					playButton:SetText('#ultipar.playeffect')
 					playButton:SetIcon('icon16/cd_go.png')
 					
 					playButton.DoClick = function()
@@ -704,6 +757,33 @@ if CLIENT then
 
 					curSelectedNode = nil
 				else
+					if div:GetRight() then
+						div:GetRight():Remove()
+					end
+
+					local effect = UltiPar.GetEffect(action, selNode.effect)
+					local propPanel, customButton = UltiPar.CreatePropertyPanel(effect)
+					propPanel:SetParent(UserPanel)
+					propPanel:SetLabel(selNode.effect .. ' ' .. language.GetPhrase('#ultipar.property'))
+					local rightwidth = width - div:GetLeftWidth()
+					rightwidth = rightwidth < 80 and 200 or rightwidth
+
+					div:SetRight(propPanel)
+					div:SetLeftWidth(width - rightwidth)
+
+					// customButton.DoClick = function()
+					// 	local target = UltiPar.GetEffect(action, selNode.effect)
+						
+					// 	local custom = table.Copy(target)
+					// 	custom.Name = custom.Name .. '_custom'
+					// 	custom.label = language.GetPhrase(custom.label) .. '_' .. language.GetPhrase('#ultipar.custom')
+						
+					// 	local customNode = self:AddNode(custom.Name, 'icon32/color_picker.png')
+					// 	customNode.effect = custom.Name
+
+					// 	self:OnNodeSelected(customNode)
+					// end
+
 					curSelectedNode = selNode
 				end
 			end
@@ -716,6 +796,7 @@ if CLIENT then
 		if isfunction(action.CreateOptionMenu) then
 			local DScrollPanel = vgui.Create('DScrollPanel', Tabs)
 			local OptionPanel = vgui.Create('DForm', DScrollPanel)
+			OptionPanel:SetLabel('Options')
 			OptionPanel:Dock(FILL)
 			OptionPanel.Paint = function(self, w, h)
 				draw.RoundedBox(0, 0, 0, w, h, white)

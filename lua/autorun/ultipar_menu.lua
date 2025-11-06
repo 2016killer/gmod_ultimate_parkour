@@ -32,7 +32,13 @@ hook.Add('PopulateToolMenu', 'ultipar.menu', function()
 
 			tree.RefreshNode = function(self)
 				tree:Clear()
-				for k, v in pairs(UltiPar.ActionSet) do
+
+				local keys = {}
+				for k, v in pairs(UltiPar.ActionSet) do table.insert(keys, k) end
+				table.sort(keys)
+
+				for i, k in ipairs(keys) do
+					local v = UltiPar.ActionSet[k]
 					if v.Invisible then continue end
 					local label = isstring(v.label) and v.label or k
 					local icon = isstring(v.icon) and v.icon or 'icon32/tool.png'
@@ -63,6 +69,8 @@ hook.Add('PopulateToolMenu', 'ultipar.menu', function()
 						UltiPar.CreateActionEditor(node.action)
 					end
 				end
+
+				keys = nil
 			end
 
 			panel:AddItem(tree)
