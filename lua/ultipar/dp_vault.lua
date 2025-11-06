@@ -89,8 +89,8 @@ local actionHC, _ = UltiPar.Register(acitonHCName)
 function action:GetSpeed(ply, ref, isdouble, breakin)
 	-- 返回Vault初始速度、结束速度、过渡速度
 	if isdouble then
-		local startspeed, _ = breakin:GetSpeed(ply)
-		local _, endspeed = self:GetSpeed(ply, false)
+		local startspeed, _ = breakin:GetSpeed(ply, ref)
+		local _, endspeed = self:GetSpeed(ply, ref, false)
 		return startspeed, endspeed * 0.8, startspeed * 0.4
 		// return startspeed, endspeed * 0.7, startspeed * 0.2
 	else
@@ -142,7 +142,26 @@ function action:Check(ply, appenddata)
 	end
 
 	if isdouble then
-		return
+		local startspeed, endspeed, middlespeed = self:GetSpeed(ply, plyvel, true,
+			type_ == 1 and actionHC or actionLC)
+
+		local vaultpos = vaultdata[2]
+		local middlepos = landpos
+		middlepos[3] = vaultpos[3]
+
+		local dis_middle = (middlepos - startpos):Length()
+		local dir_middle = (middlepos - startpos):GetNormal()
+		local duration_middle = dis_middle * 2 / (startspeed + middlespeed)
+
+		local dis = (vaultpos - middlepos):Length()
+		local dir = (vaultpos - middlepos):GetNormal()
+		local duration = dis * 2 / (middlespeed + endspeed)
+
+		ply.dp_data = {ply:GetPos(), vaultpos, vaultdata[3], startspeed, endspeed, duration, dir,
+			ply:GetPos(), middlespeed, duration_middle, dir_middle, type_
+		}
+
+		return {duration, type_}
 	else
 		local vaultpos = vaultdata[2]
 		local startspeed, endspeed = self:GetSpeed(ply, plyvel, false)
@@ -151,6 +170,7 @@ function action:Check(ply, appenddata)
 		local duration = dis * 2 / (startspeed + endspeed)
 
 		ply.dp_data = {ply:GetPos(), vaultpos, vaultdata[3], startspeed, endspeed, duration, dir}
+		
 		return {duration}
 	end
 end
@@ -163,30 +183,68 @@ function action:Play(ply, mv, cmd, data, starttime)
 		return
 	end
 
-	local startpos, landpos, blockheight, startspeed, endspeed, duration, dir = unpack(ply.dp_data)
+	local startpos, landpos, blockheight, startspeed, endspeed, duration, dir,
+		lastpos, middlespeed, duration_middle, dir_middle, type_
+	= unpack(ply.dp_data)
 	
-	local dt = CurTime() - starttime
-    local acc = (endspeed - startspeed) / duration
-	local endflag = dt > duration
+	if middlespeed then
+		local dt = CurTime() - starttime
 
-	mv:SetOrigin(startpos + (0.5 * acc * dt * dt + startspeed * dt) * dir +
-		(-100 / duration * dt * dt + 100 * dt) * UltiPar.unitzvec
-	)
+		local waittime = type_ == 1 and 0.1 or 0
+		local endflag = dt > waittime + duration_middle + duration
+		if dt < waittime then
+			mv:SetOrigin(startpos)
+		elseif dt < waittime + duration_middle then
+			dt = dt - waittime
 
-    if endflag then 
-		ply:SetMoveType(MOVETYPE_WALK)
-		if UltiPar.GeneralLandSpaceCheck(ply, ply:GetPos()) then
-			mv:SetOrigin(landpos)
+			local acc_middle = (middlespeed - startspeed) / duration_middle
+			lastpos = startpos + (0.5 * acc_middle * dt * dt + startspeed * dt) * dir_middle
+			mv:SetOrigin(lastpos)
+			ply.dp_data[8] = lastpos -- fuck
+		else
+			dt = dt - waittime - duration_middle
+
+			local acc = (endspeed - middlespeed) / duration
+			mv:SetOrigin(lastpos + (0.5 * acc * dt * dt + middlespeed * dt) * dir +
+				(-100 / duration * dt * dt + 100 * dt) * UltiPar.unitzvec
+			)
 		end
 
-		mv:SetVelocity(endspeed * UltiPar.XYNormal(dir))
-	end
+		if endflag then 
+			ply:SetMoveType(MOVETYPE_WALK)
+			if UltiPar.GeneralLandSpaceCheck(ply, ply:GetPos()) then
+				mv:SetOrigin(landpos)
+			end
 
-	return endflag
+			mv:SetVelocity(endspeed * UltiPar.XYNormal(dir))
+		end
+
+		return endflag
+	else
+		local dt = CurTime() - starttime
+		local acc = (endspeed - startspeed) / duration
+		local endflag = dt > duration
+
+		mv:SetOrigin(startpos + (0.5 * acc * dt * dt + startspeed * dt) * dir +
+			(-100 / duration * dt * dt + 100 * dt) * UltiPar.unitzvec
+		)
+
+		if endflag then 
+			ply:SetMoveType(MOVETYPE_WALK)
+			if UltiPar.GeneralLandSpaceCheck(ply, ply:GetPos()) then
+				mv:SetOrigin(landpos)
+			end
+
+			mv:SetVelocity(endspeed * UltiPar.XYNormal(dir))
+		end
+
+		return endflag
+	end
 end
 
 function action:Clear(ply)
 	if CLIENT then return end
+	ply.dp_data = nil
 	ply:SetMoveType(MOVETYPE_WALK)
 	UltiPar.SetMoveControl(ply, false, false, 0, 0)
 end
@@ -201,5 +259,4 @@ if SERVER then
 			UltiPar.Trigger(ply, action, ply.dp_data)
 		end)
 	end)
-
 end

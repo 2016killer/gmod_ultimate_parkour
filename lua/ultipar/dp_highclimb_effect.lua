@@ -35,8 +35,10 @@ local effect, _ = UltiPar.RegisterEffect(
 effect.start = effectstart_default
 effect.clear = UltiPar.emptyfunc
 
+local effect2 = table.Copy(effect)
+effect2.label = '#dp.effect.SP_VManip_BaiLang'
 UltiPar.RegisterEffect(
-	actionName, 
-	'SP-VManip-白狼',
-	effect
+    actionName, 
+    'SP-VManip-白狼', 
+    effect2
 )
