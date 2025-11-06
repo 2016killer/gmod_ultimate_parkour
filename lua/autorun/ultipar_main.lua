@@ -213,6 +213,28 @@ local function RegisterEffect(actionName, effectName, effect)
 	return effect, exist
 end
 
+local function RegisterEffectEasy(actionName, effectName, effect)
+	-- 注册动作特效, 返回特效和是否已存在
+	-- 支持覆盖
+	local action = GetAction(actionName)
+	if not action then
+		ErrorNoHalt(string.format('Action "%s" not found', actionName))
+		return
+	end
+
+	local default = GetEffect(action, 'default')
+	if not default then
+		print(string.format('Action "%s" has no default effect', actionName))
+		default = {}
+	end
+
+	return RegisterEffect(
+		actionName, 
+		effectName, 
+		table.Merge(table.Copy(default), effect)
+	)
+end
+
 local function EnableInterrupt(action, actionName2)
 	-- 启用中断
 	action.Interrupts[actionName2] = true
@@ -540,6 +562,7 @@ UltiPar.GetEffect = GetEffect
 UltiPar.Trigger = Trigger
 UltiPar.Register = Register
 UltiPar.RegisterEffect = RegisterEffect
+UltiPar.RegisterEffectEasy = RegisterEffectEasy
 UltiPar.AllowInterrupt = AllowInterrupt
 UltiPar.SetActionDisable = SetActionDisable
 UltiPar.IsActionDisable = IsActionDisable
@@ -728,6 +751,31 @@ local function LoadLuaFiles()
 	end
 end
 
+local function LoadEffectLuaFiles()
+	local filelist = file.Find('ultipar/effects/*.lua', 'LUA')
+	for _, filename in pairs(filelist) do
+		client = string.StartWith(filename, 'cl_')
+		server = string.StartWith(filename, 'sv_')
+
+		if SERVER then
+			if not client then
+				include('ultipar/effects/' .. filename)
+				print('[UltiPar]: AddFile:' .. filename)
+			end
+
+			if not server then
+				AddCSLuaFile('ultipar/effects/' .. filename)
+			end
+		else
+			if client or not server then
+				include('ultipar/effects/' .. filename)
+				print('[UltiPar]: AddFile:' .. filename)
+			end
+		end
+	end
+end
+
+
 UltiPar.LoadLuaFiles = function()
 	if CLIENT then
 		if not GetConVar('developer'):GetBool() then
@@ -761,3 +809,4 @@ elseif CLIENT then
 end
 
 LoadLuaFiles()
+LoadEffectLuaFiles()
