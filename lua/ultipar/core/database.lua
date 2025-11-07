@@ -62,7 +62,7 @@ if SERVER then
 		local action = net.ReadString()
 		if action == 'r' then
 			-- 读请求
-			local contents = ReadActionDisable()
+			local contents = UltiPar.ReadActionDisable()
 			net.Start('UltiParActionDisable')
 				net.WriteString('r')
 				net.WriteTable(contents)
@@ -112,7 +112,7 @@ if SERVER then
 		InitActionDisableTable()
 
 		-- 初始化禁用状态, 从数据库获取
-		local contents = ReadActionDisable()
+		local contents = UltiPar.ReadActionDisable()
 		table.Merge(UltiPar.DisabledSet, contents)
 	end)
 

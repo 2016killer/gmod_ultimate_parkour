@@ -1,169 +1,220 @@
 --[[
 	作者:白狼
 	2025 11 5
-
+	Trigger: Check -> Start -> StartEffect-> Play -> Clear -> ClearEffect
 --]]
 UltiPar = UltiPar or {}
-local UltiPar = UltiPar
 
+UltiPar.TRIGGERNW_FLAG_START = 'START'
+UltiPar.TRIGGERNW_FLAG_END = 'END'
+UltiPar.TRIGGERNW_FLAG_INTERRUPT = 'INTERRUPT'
+UltiPar.TRIGGERNW_FLAG_MOVE_CONTROL = 'MOVE_CONTROL'
 
-local function Execute(ply, action, checkresult, breakin, breakinresult)
-	-- [StartEffect, Start]
-	if not action then return end
-	
-	-- 执行动作
-	checkresult = action:Start(ply, checkresult, breakin, breakinresult) or checkresult
-	checkresult = istable(checkresult) and checkresult or {checkresult}
-	
-	-- 执行特效
-	local effect = GetPlayerEffect(ply, action)
-	if effect then effect:start(ply, checkresult, breakin, breakinresult) end
+local TRIGGERNW_FLAG_START = UltiPar.TRIGGERNW_FLAG_START
+local TRIGGERNW_FLAG_END = UltiPar.TRIGGERNW_FLAG_END
+local TRIGGERNW_FLAG_INTERRUPT = UltiPar.TRIGGERNW_FLAG_INTERRUPT
+local TRIGGERNW_FLAG_MOVE_CONTROL = UltiPar.TRIGGERNW_FLAG_MOVE_CONTROL
 
-	-- 标记播放
-	SetCurrentData(ply, action, checkresult, CurTime())
-
-	hook.Run('UltiParExecute', ply, action, checkresult, breakin, breakinresult)
-	return checkresult
-end 
-
-local function End(ply, action, checkresult, checkendresult, breaker, breakresult)
-	-- 动作结束
-	-- 分为自然结束、强制结束、中断结束
-	-- 自然结束breaker为nil, 强制结束breaker为true, 中断结束breaker为table
-	-- [ClearEffect, Clear]
-
-	if not action then return end
-	
-	action:Clear(ply, checkresult, checkendresult, breaker, breakresult)
-
-	local effect = GetPlayerEffect(ply, action)
-	if effect then effect:clear(ply, checkresult, checkendresult, breaker, breakresult) end
-
-	local currentAciton = GetPlayingAction(ply)
-	if currentAciton and currentAciton.Name == action.Name then 
-		SetCurrentData(ply)
-	end
-
-	hook.Run('UltiParEnd', ply, action, checkresult, checkendresult, breaker, breakresult)
-end
-
-local function Trigger(ply, action, appenddata, checkresult)
-	-- 触发动作
-	-- action 动作
-	-- appenddata 附加数据
-	-- checkresult 用于绕过Check, 直接执行
-
-	-- 检查动作是否禁用
-	local actionName = action.Name
-
-	if IsActionDisable(actionName) then
-		// print(string.format('Action "%s" is disabled.', actionName))
-		return
-	end
-
-	local currentAciton, currentCheckresult, _ = GetCurrentData(ply)
-
-	-- 检查是否允许中断当前动作
-	if currentAciton and not AllowInterrupt(ply, currentAciton, actionName) then 
-		-- 不允许中断当前动作
-		// print(string.format('Action "%s" is not allow "%s" interrupt.', currentAciton.Name, actionName))
-		return 
-	end
-
-	checkresult = checkresult or action:Check(ply, appenddata)
-	if not checkresult then
-		return
-	end
-
-	checkresult = istable(checkresult) and checkresult or {checkresult}
-	
-	if SERVER then
-		if currentAciton then
-			End(ply, currentAciton, currentCheckresult, nil, action, checkresult)
-		end
-
-		checkresult = Execute(ply, action, checkresult, currentAciton, currentCheckresult)
-
-		-- 为减少传输次数, 中断数据包与播放数据包合并发送
-		net.Start('UltiParExecute')
-			net.WriteString(actionName)
-			net.WriteTable(checkresult)
-			net.WriteString(currentAciton and currentAciton.Name or '')
-			net.WriteTable(currentCheckresult or {})
-		net.Send(ply)
-	elseif CLIENT then
-		net.Start('UltiParExecute')
-			net.WriteString(actionName)
-			net.WriteTable(checkresult)
-		net.SendToServer()
-	end
-
-	return checkresult
-end
-
-local function ForceEnd(ply)
-	local action, checkresult, starttime = GetCurrentData(ply)
-	
-	SetCurrentData(ply)
-	SetMoveControl(ply, false, false, 0, 0)
-
-	if action then	
-		End(ply, action, checkresult, nil, true, nil)
-		net.Start('UltiParEnd')
-			net.WriteString(action.Name)
-			net.WriteTable(checkresult)
-			net.WriteBool(true)
-		net.Send(ply)
+local function HandleResult(result)
+	if result then
+		return table.Pack(result)
+	else
+		return nil
 	end
 end
 
 if SERVER then
-	util.AddNetworkString('UltiParEnd')
-	util.AddNetworkString('UltiParExecute')
+	local function StartTriggerNet(ply)
+		ply.ultipar_tnet = ply.ultipar_tnet or {}
+	end
+
+	local function WriteStart(ply, actionName, data)
+		local target = ply.ultipar_tnet
+		table.Add(target, {TRIGGERNW_FLAG_START, actionName, #data})
+		table.Add(target, data)
+	end
+
+	local function WriteEnd(ply, actionName, data)
+		local target = ply.ultipar_tnet
+		table.Add(target, {TRIGGERNW_FLAG_END, actionName, #data})
+		table.Add(target, data)
+	end
+
+	local function WriteInterrupt(ply, actionName, data, breakerName)
+		local target = ply.ultipar_tnet
+		table.Add(target, {TRIGGERNW_FLAG_INTERRUPT, actionName, #data + 1, breakerName})
+		table.Add(target, data)
+	end
+
+	local function WriteMoveControl(ply, enable, ClearMovement, RemoveKeys, AddKeys)
+		local target = ply.ultipar_tnet
+		table.Add(target, {TRIGGERNW_FLAG_MOVE_CONTROL,
+			'', 4, enable, ClearMovement, RemoveKeys, AddKeys
+		})
+	end
+
+	local function SendTriggerNet(ply)
+		if not ply.ultipar_tnet then 
+			ErrorNoHalt('UltiPar: SendTriggerNet: ply.ultipar_tnet is nil\n')
+			return 
+		end
+		net.Start('UltiParEvents')
+			net.WriteTable(ply.ultipar_tnet, true)
+		net.Send(ply)
+		ply.ultipar_tnet = nil
+	end
+
+	UltiPar.StartTriggerNet = StartTriggerNet
+	UltiPar.WriteStart = WriteStart
+	UltiPar.WriteEnd = WriteEnd
+	UltiPar.WriteInterrupt = WriteInterrupt
+	UltiPar.WriteMoveControl = WriteMoveControl
+end
+
+local IsActionDisable = UltiPar.IsActionDisable
+local GetPlayerCurrentEffect = UltiPar.GetPlayerCurrentEffect
+UltiPar.Trigger = function(ply, action, checkResult, ...)
+	-- 动作触发器
+	-- checkResult 用于绕过Check, 直接执行
+	
+	local actionName = action.Name
+	if IsActionDisable(actionName) then 
+		return 
+	end
+
+	-- 检查中断
+	local playing = ply.ultipar_playing
+	local playingData = ply.ultipar_playing_data
+	if playing then
+		local interruptFunc = playing.Interrupts[actionName]
+		if isfunction(interruptFunc) and interruptFunc(ply, unpack(playingData)) then
+			ply.ultipar_playing = nil
+			ply.ultipar_playing_data = nil
+		else
+			return
+		end
+	end
+
+	checkResult = istable(checkResult) and checkResult or HandleResult(action:Check(ply, ...))
+	if not checkResult then
+		return
+	end
+
+
+	if SERVER then
+		action:Start(ply, unpack(checkResult))
+
+		-- 执行特效
+		local effect = GetPlayerCurrentEffect(ply, action)
+		if effect then 
+			effect:start(ply, unpack(checkResult)) 
+		end
+
+		-- 启动播放
+		ply.ultipar_playing = action
+		ply.ultipar_playing_data = checkResult
+
+		StartTriggerNet(ply)
+			if playing then
+				WriteInterrupt(ply, playing.Name, playingData, actionName)
+			end
+			WriteStart(ply, actionName, checkResult)
+		SendTriggerNet(ply)
+
+		if playing then
+			hook.Run('UltiParInterrupt', ply, playing, playingData, action, checkResult)
+		end
+		hook.Run('UltiParStart', ply, action, checkResult)
+	elseif CLIENT then
+		net.Start('UltiParStart')
+			net.WriteString(actionName)
+			net.WriteTable(checkResult)
+		net.SendToServer()
+	end
+
+	return checkResult
+end
+
+
+if SERVER then
+	local function ForceEnd(ply)
+		local playing = ply.ultipar_playing
+		local playingData = ply.ultipar_playing_data
+
+		ply.ultipar_playing = nil
+		ply.ultipar_playing_data = nil
+
+		if playing then	
+			playing:Clear(ply)
+			local effect = GetPlayerCurrentEffect(ply, playing)
+			if effect then 
+				effect:clear(ply) 
+			end
+
+			StartTriggerNet(ply)
+				WriteEnd(ply, playing.Name, {})
+				WriteMoveControl(ply, false, false, 0, 0)
+			SendTriggerNet(ply)
+
+			hook.Run('UltiParEnd', ply, action, {})
+		end
+	end
+
+	util.AddNetworkString('UltiParStart')
+	util.AddNetworkString('UltiParEvents')
+
+	net.Receive('UltiParStart', function(len, ply)
+		local actionName = net.ReadString()
+		local checkResult = net.ReadTable()
+
+		local action = GetAction(actionName)
+		if not action then 
+			return 
+		end
+
+		Trigger(ply, action, checkResult)
+	end)
 
 	hook.Add('SetupMove', 'ultipar.play', function(ply, mv, cmd)
-		local action, checkresult, starttime = GetCurrentData(ply)
-		if not action then return end
+		local playing = ply.ultipar_playing
+		if not playing then 
+			return 
+		end
 
+		local playingData = ply.ultipar_playing_data
 
-		local succ, err = pcall(action.Play, action, ply, mv, cmd, checkresult, starttime)
-		-- 异常处理, 清除移动数据
+		local endResult = HandleResult(pcall(playing.Play, playing, ply, mv, cmd, unpack(playingData)))
+		if not endResult then
+			return
+		end
+
+		-- 异常处理
+		local succ, err = endResult[1], endResult[2]
 		if not succ then
-			ErrorNoHalt(string.format('Action "%s" Play error: %s\n', action.Name, err))
+			ErrorNoHalt(string.format('Action "%s" Play error: %s\n', playing.Name, err))
 			ForceEnd(ply)
 			return
 		end
 
-		local endresult = err
-		if not endresult then
-			return
+		if endResult then
+			ply.ultipar_playing = nil
+			ply.ultipar_playing_data = nil
+
+			playing:Clear(ply, unpack(endResult, 2))
+
+			local effect = GetPlayerCurrentEffect(ply, playing)
+			if effect then 
+				effect:clear(ply, unpack(endResult, 2)) 
+			end
+
+			StartTriggerNet(ply)
+				-- 这里endResult第一位是pcall的返回值, 客户端需要去掉
+				WriteEnd(ply, playing.Name, endResult)
+				WriteMoveControl(ply, false, false, 0, 0)
+			SendTriggerNet(ply)
+
+			hook.Run('UltiParEnd', ply, playing, endResult)
 		end
-
-		endresult = istable(endresult) and endresult or {endresult}
-
-		End(ply, action, checkresult, endresult, nil, nil)
-		net.Start('UltiParEnd')
-			net.WriteString(action.Name)
-			net.WriteTable(checkresult)
-			net.WriteBool(false)
-			net.WriteTable(endresult)
-		net.Send(ply)
-	end)
-
-	net.Receive('UltiParExecute', function(len, ply)
-		local actionName = net.ReadString()
-		local checkresult = net.ReadTable()
-
-		// print('net Receive UltiParExecute')
-		local action = GetAction(actionName)
-		if not action then return end
-
-		Trigger(ply, action, nil, checkresult)
-	end)
-
-	hook.Add('PlayerInitialSpawn', 'ultipar.init', function(ply)
-		ForceEnd(ply)
-		ply.ultipar_effect_config = ply.ultipar_effect_config or {}
 	end)
 
 	hook.Add('PlayerSpawn', 'ultipar.clear', ForceEnd)
@@ -174,36 +225,97 @@ if SERVER then
 
 	concommand.Add('up_forceend', ForceEnd)
 elseif CLIENT then
-	net.Receive('UltiParExecute', function(len, ply)
-		local actionName = net.ReadString()
-		local checkresult = net.ReadTable()
-		local currentAcitonName = net.ReadString()
-		local currentCheckresult = net.ReadTable()
+	function HandleTriggerData(data, point)
+		local point = 1
 
-		// print('net Receive UltiParExecute')
-		ply = LocalPlayer()
-		local currentAciton = GetAction(currentAcitonName)
-		local action = GetAction(actionName)
+		local flag = data[point]
+		local actionName = data[point + 1]
+		local len = data[point + 2]
 		
-		if currentAcitonName ~= '' then
-			End(ply, currentAciton, currentCheckresult, nil, action, checkresult)
-		else
-			currentAciton = nil
-			currentCheckresult = nil
+		local result = {unpack(data, point + 3, point + 2 + len)}
+	
+		return flag, actionName, result, point + 3 + len
+	end
+
+	net.Receive('UltiParEvents', function(len, ply)
+		local data = net.ReadTable(true)
+		
+		local point = 1 
+		while point <= #data do
+			local flag, actionName, result, nextPoint = HandleTriggerData(data, point)
+			point = nextPoint
+
+			local action = GetAction(actionName)
+			if not action then 
+				return 
+			end
+
+			local effect = GetPlayerCurrentEffect(ply, action)
+
+			if flag == TRIGGERNW_FLAG_START then
+				action:Start(ply, unpack(result))
+				if effect then 
+					effect:start(ply, unpack(result)) 
+				end
+
+				hook.Run('UltiParStart', ply, action, result)
+			elseif flag == TRIGGERNW_FLAG_END then
+				action:Clear(ply, unpack(result))
+				if effect then 
+					effect:clear(ply, unpack(result)) 
+				end
+
+				hook.Run('UltiParEnd', ply, action, result)
+			elseif flag == TRIGGERNW_FLAG_MOVE_CONTROL then
+				MoveControl.enable = result[1]
+				MoveControl.ClearMovement = result[2]
+				MoveControl.RemoveKeys = result[3]
+				MoveControl.AddKeys = result[4]
+			elseif flag == TRIGGERNW_FLAG_INTERRUPT then
+				local breakerName = result[1]
+
+				local interruptFunc = action.Interrupts[breakerName]
+				if isfunction(interruptFunc) then
+					interruptFunc(ply, unpack(result, 2))
+				end
+
+				hook.Run('UltiParInterrupt', ply, action, result, 
+					GetAction(breakerName), nil
+				)
+			end
+		end
+	end)
+
+	local MoveControl = {}
+	hook.Add('CreateMove', 'ultipar.move.control', function(cmd)
+		if not MoveControl.enable then return end
+		if MoveControl.ClearMovement then
+			cmd:ClearMovement()
 		end
 
-		checkresult = Execute(ply, action, checkresult, currentAciton, currentCheckresult)
+		local RemoveKeys = MoveControl.RemoveKeys
+		if isnumber(RemoveKeys) and RemoveKeys ~= 0 then
+			cmd:RemoveKey(RemoveKeys)
+		end
+
+		local AddKeys = MoveControl.AddKeys
+		if isnumber(AddKeys) and AddKeys ~= 0 then
+			cmd:AddKey(AddKeys)
+		end
 	end)
 
-	net.Receive('UltiParEnd', function(len, ply)
-		local actionName = net.ReadString()
-		local checkresult = net.ReadTable()
-		local forceEnd = net.ReadBool()
-		local endresult = not forceEnd and net.ReadTable() or nil
-		
-		// print('net Receive UltiParEnd')
-		ply = LocalPlayer()
-		local action = GetAction(actionName)
-		End(ply, action, checkresult, endresult, forceEnd or nil, nil)
-	end)
+end
+
+UltiPar.HandleResult = HandleResult
+
+UltiPar.GetPlaying = function(ply)
+	return ply.ultipar_playing
+end
+
+UltiPar.GetPlayingData = function(ply)
+	return ply.ultipar_playing_data
+end
+
+UltiPar.SetPlayingData = function(ply, data)
+	ply.ultipar_playing_data = data
 end

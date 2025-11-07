@@ -8,10 +8,10 @@
 			default = {
 				name = 'default',
 				label = '#default',
-				start = function(self, ply, ...(startdata or checkdata))
+				start = function(self, ply, ...(checkResult))
 					-- 特效
 				end
-				clear = function(self, ply, ...(cleardata or enddata))	
+				clear = function(self, ply, ...(endResult))	
 					-- 清除特效
 				end
 			},
@@ -20,32 +20,31 @@
 
 		-- 定义其他动作中断时的行为
 		Interrupts = {
-			ExampleAcitonName = function(self, ply, ...)
+			ExampleAcitonName = function(self, ply, ...(checkResult))
+				-- 在这里定义中断行为
+				-- 可能需要清理特效之类的
+				return (true or false)
 			end
 		}
 
 		Check = function(self, ply, ...)
 			-- 检查动作是否可执行
-			return checkdata
+			return checkResult
 		end,
 
-		Start = function(self, ply, ...(checkdata))
-			-- 开始
-			return startdata
+		Start = function(self, ply, ...(checkResult))
 		end,
 
-		Play = function(self, ply, mv, cmd, ...(startdata or checkdata))
+		Play = function(self, ply, mv, cmd, ...(checkResult))
 			-- 执行, 返回有效则结束
-			return enddata
+			return endResult
 		end,
 
-		Clear = function(self, ply, ...(enddata))
-			-- 清除动作
-			return cleardata
+		Clear = function(self, ply, ...(endResult))
 		end,
 	}
 
-	Trigger: Check -> Execute:[Start -> StartEffect]-> Play -> End[Clear -> ClearEffect]
+	Trigger: Check -> StartEffect-> Play -> Clear -> ClearEffect
 --]]
 
 local function printdata(flag, ...)
@@ -92,21 +91,15 @@ local UltiPar = UltiPar
 
 UltiPar.ActionSet = UltiPar.ActionSet or {}
 UltiPar.DisabledSet = UltiPar.DisabledSet or {}
-UltiPar.MoveControl = UltiPar.MoveControl or {} -- 移动控制, 此变量不可直接修改, 使用SetMoveControl修改, 服务器端无意义
 UltiPar.emptyfunc = function() end
 
 local DisabledSet = UltiPar.DisabledSet
 local ActionSet = UltiPar.ActionSet
-local MoveControl = UltiPar.MoveControl
+
 
 UltiPar.GetAction = function(actionName)
 	-- 不存在返回nil
 	return ActionSet[actionName]
-end
-
-UltiPar.GetEffect = function(action, effectName)
-	-- 不存在返回nil
-	return action.Effects[effectName]
 end
 
 UltiPar.Register = function(name, action)
@@ -169,102 +162,6 @@ UltiPar.Register = function(name, action)
 	return action, exist
 end
 
-UltiPar.RegisterEffect = function(actionName, effectName, effect)
-	-- 注册动作特效, 返回特效和是否已存在
-	-- 不支持覆盖
-
-	local action = Register(actionName)
-
-	local exist
-	if istable(action.Effects[effectName]) then
-		effect = action.Effects[effectName]
-		exist = true
-	elseif istable(effect) then
-		action.Effects[effectName] = effect
-		exist = false
-	else
-		effect = {}
-		action.Effects[effectName] = effect
-		exist = false
-	end
-	
-	effect.Name = effectName
-	effect.start = effect.start or function(ply, checkdata, breakin, breakinresult)
-		-- 特效
-		printdata(
-			string.format('start Action "%s" Effect "%s"', actionName, effectName),
-			ply, checkdata, breakin, breakinresult
-		)
-	end
-
-	effect.clear = effect.clear or function(ply, checkdata, enddata, breaker, breakresult)
-		-- 当中断或强制退出时enddata为nil, 否则为表
-		-- 强制中断时 breaker 为 true	
-		-- 清除特效
-		printdata(
-			string.format('clear Action "%s" Effect "%s"', actionName, effectName),
-			ply, checkdata, enddata, breaker, breakresult
-		)
-	end
-
-	return effect, exist
-end
-
-UltiPar.RegisterEffectEasy = function(actionName, effectName, effect)
-	-- 注册动作特效, 返回特效和是否已存在
-	-- 支持覆盖
-	local action = GetAction(actionName)
-	if not action then
-		ErrorNoHalt(string.format('Action "%s" not found', actionName))
-		return
-	end
-
-	local default = GetEffect(action, 'default')
-	if not default then
-		print(string.format('Action "%s" has no default effect', actionName))
-		default = {}
-	end
-
-	return RegisterEffect(
-		actionName, 
-		effectName, 
-		table.Merge(table.Copy(default), effect)
-	)
-end
-
-
-UltiPar.GetPlayingData = function(ply)
-	return ply.ultipar_playing and ply.ultipar_playing[3] or nil
-end
-
-UltiPar.GetPlayingData = function(ply)
-	return ply.ultipar_playing_data
-end
-
-UltiPar.SetPlayingData = function(ply, data)
-	if not istable(data) then
-		Error(string.format('SetPlayingData: data must be a table, but got %s', type(data)))
-	end
-
-	ply.ultipar_playing_data = data
-end
-
-UltiPar.CheckInterrupt = function(ply, action, breakerName)
-	if isfunction(action.Interrupts[breakerName]) then
-		return action.Interrupts[breakerName](ply)
-	end
-end
-
-UltiPar.GetPlayerEffect = function(ply, action)
-	-- 获取指定玩家当前动作的特效
-	if ply.ultipar_effect_config[action.Name] == 'Custom' then
-		local CustomEffects = ply.ultipar_effect_config['CUSTOM']
-		return CustomEffects and CustomEffects[action.Name] or nil
-	else
-		return action.Effects[ply.ultipar_effect_config[action.Name] or 'default']
-	end
-end
-
 UltiPar.IsActionDisable = function(actionName)
 	return DisabledSet[actionName]
 end
@@ -303,8 +200,40 @@ UltiPar.LoadLuaFiles = function(path)
 		end
 	end
 end
+if CLIENT then
+	UltiPar.LoadUserDataFromDisk = function(path)
+		-- 从磁盘加载用户数据
+		local content = file.Read(path, 'DATA')
+
+		if content == nil then
+			print(string.format('[UltiPar]: LoadUserDataFromDisk() - file "%s" content is nil', path))
+			return {}
+		else
+			local data = util.JSONToTable(content)
+			if istable(data) then
+				return data
+			else
+				ErrorNoHalt(string.format('UltiPar.LoadUserDataFromDisk() - file "%s" content is not valid json\n', path))
+				return {}
+			end
+		end
+	end
+
+	UltiPar.SaveUserDataToDisk = function(data, path)
+		if not istable(data) then
+			ErrorNoHalt(string.format('SaveUserDataToDisk: data must be a table, but got %s\n', type(data)))
+			return
+		end
+
+		local content = util.TableToJSON(data, true)
+		local succ = file.Write(path, content)
+		print(string.format('[UltiPar]: save user data to disk %s, result: %s', path, succ))
+	end
+end
 
 
 UltiPar.LoadLuaFiles('core')
 UltiPar.LoadLuaFiles('actions')
 UltiPar.LoadLuaFiles('effects')
+
+UltiPar.Version = '2.0.0'

@@ -4,13 +4,14 @@
 
 --]]
 
-local function XYNormal(v)
+UltiPar.XYNormal = function(v)
 	local v = Vector(v)
 	v[3] = 0
 	v:Normalize()
 	return v
 end
 
+local XYNormal = UltiPar.XYNormal
 local unitzvec = Vector(0, 0, 1)
 
 UltiPar = UltiPar or {}
@@ -183,5 +184,4 @@ UltiPar.GeneralVaultCheck = function(ply, startpos, landpos, hlen, vlen)
 	return vaultpos, vaultheight
 end
 
-UltiPar.XYNormal = XYNormal
 UltiPar.unitzvec = unitzvec
