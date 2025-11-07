@@ -8,46 +8,44 @@
 			default = {
 				name = 'default',
 				label = '#default',
-				start = function(self, ply, checkdata, breakin, breakinresult)
+				start = function(self, ply, ...(startdata or checkdata))
 					-- 特效
 				end
-				clear = function(self, ply, checkdata, enddata, breaker, breakresult)	
+				clear = function(self, ply, ...(cleardata or enddata))	
 					-- 清除特效
 				end
 			},
 			...
 		},
 
-		-- 指定了可以中断该动作的其他动作
+		-- 定义其他动作中断时的行为
 		Interrupts = {
-			ExampleAcitonName = true
+			ExampleAcitonName = function(self, ply, ...)
+			end
 		}
 
-		Check = function(self, ply, appenddata)
+		Check = function(self, ply, ...)
 			-- 检查动作是否可执行
-			-- 返回值如果不是表则自动包装为表
 			return checkdata
 		end,
 
-		Start = function(self, ply, checkdata, breakin, breakinresult)
+		Start = function(self, ply, ...(checkdata))
 			-- 开始
-			-- 可以返回表覆盖checkdata
+			return startdata
 		end,
 
-		Play = function(self, ply, mv, cmd, checkdata, starttime)
-			-- 执行, 如果返回真, 则结束动作
-			-- 返回值如果不是表则自动包装为表
+		Play = function(self, ply, mv, cmd, ...(startdata or checkdata))
+			-- 执行, 返回有效则结束
 			return enddata
 		end,
 
-		Clear = function(self, ply, checkdata, enddata, breaker, breakresult)
-			-- 当中断或强制退出时enddata为nil, 否则为表
-			-- 强制中断时 breaker 为 true
+		Clear = function(self, ply, ...(enddata))
 			-- 清除动作
+			return cleardata
 		end,
 	}
 
-	Trigger: Check -> Execute:[StartEffect, Start]-> Play -> End[ClearEffect, Clear]
+	Trigger: Check -> Execute:[Start -> StartEffect]-> Play -> End[Clear -> ClearEffect]
 --]]
 
 local function printdata(flag, ...)
@@ -90,6 +88,8 @@ end
 
 
 UltiPar = UltiPar or {}
+local UltiPar = UltiPar
+
 UltiPar.ActionSet = UltiPar.ActionSet or {}
 UltiPar.DisabledSet = UltiPar.DisabledSet or {}
 UltiPar.MoveControl = UltiPar.MoveControl or {} -- 移动控制, 此变量不可直接修改, 使用SetMoveControl修改, 服务器端无意义
@@ -99,20 +99,18 @@ local DisabledSet = UltiPar.DisabledSet
 local ActionSet = UltiPar.ActionSet
 local MoveControl = UltiPar.MoveControl
 
-local function GetAction(actionName)
-	-- 获取动作
-	-- 返回动作表, 如果不存在则返回nil
+UltiPar.GetAction = function(actionName)
+	-- 不存在返回nil
 	return ActionSet[actionName]
 end
 
-local function GetEffect(action, effectName)
-	-- 获取特效
-	-- 返回特效表, 如果不存在则返回nil
+UltiPar.GetEffect = function(action, effectName)
+	-- 不存在返回nil
 	return action.Effects[effectName]
 end
 
-local function Register(name, action)
-	-- 注册动作, 返回动作和是否已存在
+UltiPar.Register = function(name, action)
+	-- 返回动作表和是否已存在
 	-- 不支持覆盖
 
 	local exist
@@ -131,37 +129,36 @@ local function Register(name, action)
 	action.Name = name
 	action.Effects = action.Effects or {}
 	action.Interrupts = action.Interrupts or {}
-	action.Check = action.Check or function(self, ply, appenddata)
+	action.Check = action.Check or function(self, ply, ...)
 		printdata(
 			string.format('Check Action "%s"', self.Name),
-			ply, appenddata
+			ply, ...
 		)
 
-		return {fuck = true}
+		return 'fuck', 'shit'
 	end
 
-	action.Start = action.Start or function(self, ply, checkdata, breakin, breakinresult)
+	action.Start = action.Start or function(self, ply, ...)
 		printdata(
 			string.format('Start Action "%s"', self.Name),
-			ply, checkdata, breakin, breakinresult
+			ply, ...
 		)
 	end
 
-	action.Play = action.Play or function(self, ply, mv, cmd, checkdata, starttime)
+	action.Play = action.Play or function(self, ply, mv, cmd, ...)
 		if CurTime() - starttime > 2 then
 			printdata(
 				string.format('Play Action "%s"', self.Name),
-				ply, checkdata, starttime
+				ply, ...
 			)
-
 			return {mygod = true}
 		end
 	end
 
-	action.Clear = action.Clear or function(self, ply, checkdata, enddata, breaker, breakresult)
+	action.Clear = action.Clear or function(self, ply, ...)
 		printdata(
 			string.format('Clear Action "%s"', self.Name),
-			ply, checkdata, enddata, breaker, breakresult
+			ply, ...
 		)
 	end
 
@@ -172,7 +169,7 @@ local function Register(name, action)
 	return action, exist
 end
 
-local function RegisterEffect(actionName, effectName, effect)
+UltiPar.RegisterEffect = function(actionName, effectName, effect)
 	-- 注册动作特效, 返回特效和是否已存在
 	-- 不支持覆盖
 
@@ -213,7 +210,7 @@ local function RegisterEffect(actionName, effectName, effect)
 	return effect, exist
 end
 
-local function RegisterEffectEasy(actionName, effectName, effect)
+UltiPar.RegisterEffectEasy = function(actionName, effectName, effect)
 	-- 注册动作特效, 返回特效和是否已存在
 	-- 支持覆盖
 	local action = GetAction(actionName)
@@ -235,54 +232,30 @@ local function RegisterEffectEasy(actionName, effectName, effect)
 	)
 end
 
-local function EnableInterrupt(action, actionName2)
-	-- 启用中断
-	action.Interrupts[actionName2] = true
-end
 
-local function GetCurrentAction(ply)
-	-- 获取当前播放的动作
-	return ply.ultipar_playing and ply.ultipar_playing[1] or nil
-end
-
-local function GetCurrentActionCheckResult(ply)
-	return ply.ultipar_playing and ply.ultipar_playing[2] or nil
-end
-
-local function GetCurrentActionStartTime(ply)
+UltiPar.GetPlayingData = function(ply)
 	return ply.ultipar_playing and ply.ultipar_playing[3] or nil
 end
 
-local function GetCurrentData(ply)
-	-- 获取当前播放数据
-	-- action, checkresult, starttime
-	if ply.ultipar_playing then
-		return unpack(ply.ultipar_playing)
-	else
-		return nil
+UltiPar.GetPlayingData = function(ply)
+	return ply.ultipar_playing_data
+end
+
+UltiPar.SetPlayingData = function(ply, data)
+	if not istable(data) then
+		Error(string.format('SetPlayingData: data must be a table, but got %s', type(data)))
+	end
+
+	ply.ultipar_playing_data = data
+end
+
+UltiPar.CheckInterrupt = function(ply, action, breakerName)
+	if isfunction(action.Interrupts[breakerName]) then
+		return action.Interrupts[breakerName](ply)
 	end
 end
 
-local function SetCurrentData(ply, action, checkresult, starttime)
-	-- 设置当前播放数据
-	-- action, checkresult, starttime
-	if action then
-		ply.ultipar_playing = {
-			action, 
-			checkresult, 
-			starttime or CurTime()
-		}
-	else
-		ply.ultipar_playing = nil
-	end
-end
-
-local function AllowInterrupt(ply, action, breakerName)
-	-- 允许中断
-	return action.Interrupts[breakerName] ~= nil
-end
-
-local function GetPlayerEffect(ply, action)
+UltiPar.GetPlayerEffect = function(ply, action)
 	-- 获取指定玩家当前动作的特效
 	if ply.ultipar_effect_config[action.Name] == 'Custom' then
 		local CustomEffects = ply.ultipar_effect_config['CUSTOM']
@@ -292,651 +265,39 @@ local function GetPlayerEffect(ply, action)
 	end
 end
 
-local function IsActionDisable(actionName)
-	-- 检查动作是否启用
+UltiPar.IsActionDisable = function(actionName)
 	return DisabledSet[actionName]
 end
 
-local function SetActionDisable(actionName, disable)
-	-- 设置动作是否禁用
+UltiPar.SetActionDisable = function(actionName, disable)
 	DisabledSet[actionName] = disable
 end
 
-local function ToggleActionDisable(actionName)
-	-- 切换动作禁用状态
+UltiPar.ToggleActionDisable = function(actionName)
 	DisabledSet[actionName] = !DisabledSet[actionName]
 end
 
-----------------移动控制
-local function SetMoveControl(ply, enable, ClearMovement, RemoveKeys, AddKeys)
-	if SERVER then
-		net.Start('UltiParMoveControl')
-			net.WriteBool(enable)
-			net.WriteBool(ClearMovement)
-			net.WriteInt(RemoveKeys, 32)
-			net.WriteInt(AddKeys, 32)
-		net.Send(ply)
-	elseif CLIENT then
-		MoveControl.enable = enable
-		MoveControl.ClearMovement = ClearMovement
-		MoveControl.RemoveKeys = RemoveKeys
-		MoveControl.AddKeys = AddKeys
-	end
-end
 
-if SERVER then
-	util.AddNetworkString('UltiParMoveControl')
-elseif CLIENT then
-	net.Receive('UltiParMoveControl', function()
-		local enable = net.ReadBool()
-		local ClearMovement = net.ReadBool()
-		local RemoveKeys = net.ReadInt(32)
-		local AddKeys = net.ReadInt(32)
+UltiPar.LoadLuaFiles = function(path)
+	local dir = string.format('ultipar/%s/', path)
+	local filelist = file.Find(dir .. '*.lua', 'LUA')
 
-		SetMoveControl(nil, enable, ClearMovement, RemoveKeys, AddKeys)
-	end)
-
-	hook.Add('CreateMove', 'ultipar.move.control', function(cmd)
-		if not MoveControl.enable then return end
-		if MoveControl.ClearMovement then
-			cmd:ClearMovement()
-		end
-
-		local RemoveKeys = MoveControl.RemoveKeys
-		if isnumber(RemoveKeys) and RemoveKeys ~= 0 then
-			cmd:RemoveKey(RemoveKeys)
-		end
-
-		local AddKeys = MoveControl.AddKeys
-		if isnumber(AddKeys) and AddKeys ~= 0 then
-			cmd:AddKey(AddKeys)
-		end
-	end)
-end
-----------------
-
-----------------触发器
-local function Execute(ply, action, checkresult, breakin, breakinresult)
-	-- [StartEffect, Start]
-	if not action then return end
-	
-	-- 执行动作
-	checkresult = action:Start(ply, checkresult, breakin, breakinresult) or checkresult
-	checkresult = istable(checkresult) and checkresult or {checkresult}
-	
-	-- 执行特效
-	local effect = GetPlayerEffect(ply, action)
-	if effect then effect:start(ply, checkresult, breakin, breakinresult) end
-
-	-- 标记播放
-	SetCurrentData(ply, action, checkresult, CurTime())
-
-	hook.Run('UltiParExecute', ply, action, checkresult, breakin, breakinresult)
-	return checkresult
-end 
-
-local function End(ply, action, checkresult, checkendresult, breaker, breakresult)
-	-- 动作结束
-	-- 分为自然结束、强制结束、中断结束
-	-- 自然结束breaker为nil, 强制结束breaker为true, 中断结束breaker为table
-	-- [ClearEffect, Clear]
-
-	if not action then return end
-	
-	action:Clear(ply, checkresult, checkendresult, breaker, breakresult)
-
-	local effect = GetPlayerEffect(ply, action)
-	if effect then effect:clear(ply, checkresult, checkendresult, breaker, breakresult) end
-
-	local currentAciton = GetCurrentAction(ply)
-	if currentAciton and currentAciton.Name == action.Name then 
-		SetCurrentData(ply)
-	end
-
-	hook.Run('UltiParEnd', ply, action, checkresult, checkendresult, breaker, breakresult)
-end
-
-local function Trigger(ply, action, appenddata, checkresult)
-	-- 触发动作
-	-- action 动作
-	-- appenddata 附加数据
-	-- checkresult 用于绕过Check, 直接执行
-
-	-- 检查动作是否禁用
-	local actionName = action.Name
-
-	if IsActionDisable(actionName) then
-		// print(string.format('Action "%s" is disabled.', actionName))
-		return
-	end
-
-	local currentAciton, currentCheckresult, _ = GetCurrentData(ply)
-
-	-- 检查是否允许中断当前动作
-	if currentAciton and not AllowInterrupt(ply, currentAciton, actionName) then 
-		-- 不允许中断当前动作
-		// print(string.format('Action "%s" is not allow "%s" interrupt.', currentAciton.Name, actionName))
-		return 
-	end
-
-	checkresult = checkresult or action:Check(ply, appenddata)
-	if not checkresult then
-		return
-	end
-
-	checkresult = istable(checkresult) and checkresult or {checkresult}
-	
-	if SERVER then
-		if currentAciton then
-			End(ply, currentAciton, currentCheckresult, nil, action, checkresult)
-		end
-
-		checkresult = Execute(ply, action, checkresult, currentAciton, currentCheckresult)
-
-		-- 为减少传输次数, 中断数据包与播放数据包合并发送
-		net.Start('UltiParExecute')
-			net.WriteString(actionName)
-			net.WriteTable(checkresult)
-			net.WriteString(currentAciton and currentAciton.Name or '')
-			net.WriteTable(currentCheckresult or {})
-		net.Send(ply)
-	elseif CLIENT then
-		net.Start('UltiParExecute')
-			net.WriteString(actionName)
-			net.WriteTable(checkresult)
-		net.SendToServer()
-	end
-
-	return checkresult
-end
-
-local function ForceEnd(ply)
-	local action, checkresult, starttime = GetCurrentData(ply)
-	
-	SetCurrentData(ply)
-	SetMoveControl(ply, false, false, 0, 0)
-
-	if action then	
-		End(ply, action, checkresult, nil, true, nil)
-		net.Start('UltiParEnd')
-			net.WriteString(action.Name)
-			net.WriteTable(checkresult)
-			net.WriteBool(true)
-		net.Send(ply)
-	end
-end
-
-if SERVER then
-	util.AddNetworkString('UltiParEnd')
-	util.AddNetworkString('UltiParExecute')
-
-	hook.Add('SetupMove', 'ultipar.play', function(ply, mv, cmd)
-		local action, checkresult, starttime = GetCurrentData(ply)
-		if not action then return end
-
-
-		local succ, err = pcall(action.Play, action, ply, mv, cmd, checkresult, starttime)
-		-- 异常处理, 清除移动数据
-		if not succ then
-			ErrorNoHalt(string.format('Action "%s" Play error: %s\n', action.Name, err))
-			ForceEnd(ply)
-			return
-		end
-
-		local endresult = err
-		if not endresult then
-			return
-		end
-
-		endresult = istable(endresult) and endresult or {endresult}
-
-		End(ply, action, checkresult, endresult, nil, nil)
-		net.Start('UltiParEnd')
-			net.WriteString(action.Name)
-			net.WriteTable(checkresult)
-			net.WriteBool(false)
-			net.WriteTable(endresult)
-		net.Send(ply)
-	end)
-
-	net.Receive('UltiParExecute', function(len, ply)
-		local actionName = net.ReadString()
-		local checkresult = net.ReadTable()
-
-		// print('net Receive UltiParExecute')
-		local action = GetAction(actionName)
-		if not action then return end
-
-		Trigger(ply, action, nil, checkresult)
-	end)
-
-	hook.Add('PlayerInitialSpawn', 'ultipar.init', function(ply)
-		ForceEnd(ply)
-		ply.ultipar_effect_config = ply.ultipar_effect_config or {}
-	end)
-
-	hook.Add('PlayerSpawn', 'ultipar.clear', ForceEnd)
-
-	hook.Add('PlayerDeath', 'ultipar.clear', ForceEnd)
-
-	hook.Add('PlayerSilentDeath', 'ultipar.clear', ForceEnd)
-
-	concommand.Add('up_forceend', ForceEnd)
-elseif CLIENT then
-	net.Receive('UltiParExecute', function(len, ply)
-		local actionName = net.ReadString()
-		local checkresult = net.ReadTable()
-		local currentAcitonName = net.ReadString()
-		local currentCheckresult = net.ReadTable()
-
-		// print('net Receive UltiParExecute')
-		ply = LocalPlayer()
-		local currentAciton = GetAction(currentAcitonName)
-		local action = GetAction(actionName)
-		
-		if currentAcitonName ~= '' then
-			End(ply, currentAciton, currentCheckresult, nil, action, checkresult)
-		else
-			currentAciton = nil
-			currentCheckresult = nil
-		end
-
-		checkresult = Execute(ply, action, checkresult, currentAciton, currentCheckresult)
-	end)
-
-	net.Receive('UltiParEnd', function(len, ply)
-		local actionName = net.ReadString()
-		local checkresult = net.ReadTable()
-		local forceEnd = net.ReadBool()
-		local endresult = not forceEnd and net.ReadTable() or nil
-		
-		// print('net Receive UltiParEnd')
-		ply = LocalPlayer()
-		local action = GetAction(actionName)
-		End(ply, action, checkresult, endresult, forceEnd or nil, nil)
-	end)
-end
-----------------
-UltiPar.SetMoveControl = SetMoveControl
-UltiPar.SetCurrentData = SetCurrentData
-UltiPar.GetCurrentAction = GetCurrentAction
-UltiPar.GetCurrentActionCheckResult = GetCurrentActionCheckResult
-UltiPar.GetCurrentActionStartTime = GetCurrentActionStartTime
-UltiPar.GetCurrentData = GetCurrentData
-UltiPar.ToggleActionDisable = ToggleActionDisable
-UltiPar.GetAction = GetAction
-UltiPar.GetPlayerEffect = GetPlayerEffect
-UltiPar.GetEffect = GetEffect
-UltiPar.Trigger = Trigger
-UltiPar.Register = Register
-UltiPar.RegisterEffect = RegisterEffect
-UltiPar.RegisterEffectEasy = RegisterEffectEasy
-UltiPar.AllowInterrupt = AllowInterrupt
-UltiPar.SetActionDisable = SetActionDisable
-UltiPar.IsActionDisable = IsActionDisable
-UltiPar.debugwireframebox = debugwireframebox
-UltiPar.EnableInterrupt = EnableInterrupt
-UltiPar.End = End
-UltiPar.Execute = Execute
-
-
-UltiPar.CreateConVars = function(convars)
-	for _, v in ipairs(convars) do
-		CreateConVar(v.name, v.default, v.flags or { FCVAR_ARCHIVE, FCVAR_CLIENTCMD_CAN_EXECUTE, FCVAR_NOTIFY, FCVAR_SERVER_CAN_EXECUTE })
-	end
-end
-
-if CLIENT then
-	local white = Color(255, 255, 255)
-	local function GetConVarPhrase(name)
-		-- 替换第一个下划线为点号
-		local start, ending, phrase = string.find(name, "_", 1)
-
-		if start == nil then
-			return name
-		else
-			return '#' .. name:sub(1, start - 1) .. '.' .. name:sub(ending + 1)
-		end
-	end
-
-	UltiPar.CreateConVarMenu = function(panel, convars)
-		for _, v in ipairs(convars) do
-			local name = v.name
-			local widget = v.widget or 'NumSlider'
-			local default = v.default or '0'
-			local label = v.label or GetConVarPhrase(name)
-
-			if widget == 'NumSlider' then
-				panel:NumSlider(
-					label, 
-					name, 
-					v.min or 0, v.max or 1, 
-					v.decimals or 2
-				)
-			elseif widget == 'CheckBox' then
-				panel:CheckBox(label, name)
-			elseif widget == 'ComboBox' then
-				panel:ComboBox(
-					label, 
-					name, 
-					v.choices or {}
-				)
-			elseif widget == 'TextEntry' then
-				panel:TextEntry(label, name)
-			end
-
-			if v.help then
-				if isstring(v.help) then
-					panel:ControlHelp(v.help)
-				else
-					panel:ControlHelp(label .. '.' .. 'help')
-				end
-			end
-		end
-		
-		local defaultButton = panel:Button('#default')
-		
-		defaultButton.DoClick = function()
-			for _, v in ipairs(convars) do
-				RunConsoleCommand(v.name, v.default or '0')
-			end
-		end
-	end
-
-	local function PropertyViewText(v)
-		if isstring(v) then
-			return string.format('"%s"', v)
-		elseif isnumber(v) then
-			return string.format('%s', v)
-		elseif isbool(v) then
-			return string.format('%s', v and 'true' or 'false')
-		elseif isvector(v) or isangle(v) then
-			return string.format('[%s]', v)
-		elseif isfunction(v) then
-			return string.format('%s', 'function')
-		elseif ismatrix(v) then
-			return string.format('[%s]', v)
-		elseif istable(v) then
-			return string.format('%s', 'table')
-		end
-
-		return ''
-	end
-
-
-
-	UltiPar.CreateEffectPropertyPanel = function(actionName, effect, effecttree)
-		local panel = vgui.Create('DForm')
-		local iscustom = !!effect.linkName
-		if iscustom then
-			for k, v in pairs(effect) do
-				if k == 'label' or k == 'linkName' or k == 'Name' then
-					continue
-				elseif isstring(v) then
-					local textEntry = panel:TextEntry(k .. ':', '')
-					textEntry:SetText(v)
-					textEntry.OnChange = function(self)
-						local val = self:GetText()
-						print(k, val)
-						effect[k] = val
-					end
-				elseif isnumber(v) then
-					local numEntry = panel:TextEntry(k .. ':', '')
-					numEntry:SetText(tostring(v))
-					numEntry.OnChange = function(self)
-						local val = tonumber(self:GetText()) or 0
-						print(k, val)
-						effect[k] = val
-					end
-				elseif isbool(v) then
-					local checkBox = panel:CheckBox(k .. ':', '')
-					checkBox:SetChecked(v)
-					checkBox.OnChange = function(self, checked)
-						print(k, checked)
-						effect[k] = checked
-					end
-				elseif isvector(v) or isangle(v) then
-					local vecEntry = panel:TextEntry(k .. ':', '')
-					vecEntry:SetText(util.TableToJSON({v}))
-					vecEntry.OnChange = function(self)
-						local val = util.JSONToTable(self:GetText())
-						if not val or not val[1] or 
-							(not isvector(val[1]) and not isangle(val[1])) then
-							return
-						end
-
-						val = val[1]
-						print(k, val)
-						effect[k] = val
-					end
-				end
-			end
-
-			local saveButton = vgui.Create('DButton')
-			saveButton:SetText('#ultipar.save')
-			saveButton.DoClick = function()
-				local effectConfig = LocalPlayer().ultipar_effect_config
-
-				effectConfig[actionName] = 'Custom'
-				effectConfig['CUSTOM'] = effectConfig['CUSTOM'] or {}
-				effectConfig['CUSTOM'][actionName] = effect
-
-				UltiPar.InitCustomEffect(actionName, effect)
-				UltiPar.SaveEffectConfigToDisk(effectConfig)
-				UltiPar.SendEffectConfigToServer(effectConfig)
-				// PrintTable(effectConfig)
-			end
-
-			local playButton = panel:Button('#ultipar.playeffect')
-			playButton.DoClick = function()
-				UltiPar.EffectTest(LocalPlayer(), actionName, 'Custom')
-				saveButton:DoClick()
-			end
-
-			panel:AddItem(saveButton)
-
-			panel:SetLabel(string.format('%s %s %s', 
-				language.GetPhrase('#ultipar.custom'), 
-				language.GetPhrase('#ultipar.property'),
-				language.GetPhrase('#ultipar.link') .. ':' .. effect.linkName
-			))
-		else
-			local customButton = panel:Button('#ultipar.custom')
-			customButton:SetText('#ultipar.custom')
-			customButton:SetIcon('icon64/tool.png')
-
-			customButton.DoClick = function()
-				local effectConfig = LocalPlayer().ultipar_effect_config
-				local custom = UltiPar.CreateCustomEffect(actionName, effect.Name)
-	
-				effectConfig[actionName] = 'Custom'
-				effectConfig['CUSTOM'] = effectConfig['CUSTOM'] or {}
-				effectConfig['CUSTOM'][actionName] = custom
-
-				UltiPar.InitCustomEffect(actionName, custom)
-				UltiPar.SaveEffectConfigToDisk(effectConfig)
-				UltiPar.SendEffectConfigToServer(effectConfig)
-				// PrintTable(effectConfig)
-				effecttree.Effects['Custom'] = custom
-				effecttree:RefreshNode()
-			end
-			
-			for k, v in pairs(effect) do
-				panel:Help(k .. '=' .. PropertyViewText(v))
-			end
-
-			panel:SetLabel(string.format('%s %s %s', 
-				effect.Name, 
-				language.GetPhrase('#ultipar.property'),
-				''
-			))
-		end
-
-		return panel
-	end
-
-	
-	UltiPar.CreateActionEditor = function(actionName)
-		local action = UltiPar.GetAction(actionName)
-
-		local width, height = 600, 400
-		local Window = vgui.Create('DFrame')
-		Window:SetTitle(language.GetPhrase('ultipar.actionmanager') .. '  ' .. actionName)
-		Window:MakePopup()
-		Window:SetSizable(true)
-		Window:SetSize(width, height)
-		Window:Center()
-		Window:SetDeleteOnClose(true)
-
-		local Tabs = vgui.Create('DPropertySheet', Window)
-		Tabs:Dock(FILL)
-
-		local effectConfig = LocalPlayer().ultipar_effect_config
-		local customEffect = (effectConfig['CUSTOM'] or {})[actionName]
-		
-		local Effects = table.Copy(action.Effects)
-		if customEffect then Effects['Custom'] = customEffect end
-		
-
-		if istable(effectConfig) then
-			local UserPanel = vgui.Create('DPanel', Tabs)
-			UserPanel:Dock(FILL)
-
-			local div = vgui.Create('DHorizontalDivider', UserPanel)
-			div:Dock(FILL)
-			div:SetDividerWidth(10)
-			
-			local effecttree = vgui.Create('DTree', UserPanel)
-			effecttree.Effects = Effects
-			div:SetLeft(effecttree)
-			div:SetLeftWidth(0.5 * width)
-	
-			effecttree.RefreshNode = function(self)
-				self:Clear()
-				if div:GetRight() then div:GetRight():Remove() end
-				for k, v in pairs(Effects) do
-					local icon
-					if effectConfig[action.Name] == k then
-						icon = 'icon16/accept.png'
-						self.currentEffect = k
-					else
-						icon = isstring(v.icon) and v.icon or 'icon16/attach.png'
-					end
-					local label = isstring(v.label) and v.label or k
-
-					local node = self:AddNode(label, icon)
-					node.effect = k
-
-					local playButton = vgui.Create('DButton', node)
-					playButton:SetSize(60, 18)
-					// playButton:SetPos(170, 0)
-					playButton:Dock(RIGHT)
-					
-					playButton:SetText('#ultipar.playeffect')
-					playButton:SetIcon('icon16/cd_go.png')
-					
-					playButton.DoClick = function()
-						UltiPar.EffectTest(LocalPlayer(), action.Name, node.effect)
-					end
-				end
-			end
-
-			local curSelectedNode = nil
-			local clicktime = 0
-			effecttree.OnNodeSelected = function(self, selNode)
-				if CurTime() - clicktime < 0.2 and curSelectedNode == selNode and self.currentEffect ~= selNode.effect then
-					effectConfig[action.Name] = selNode.effect
-					
-					UltiPar.SendEffectConfigToServer(effectConfig)
-					UltiPar.SaveEffectConfigToDisk(effectConfig)
-					effecttree:RefreshNode()
-
-					curSelectedNode = nil
-				else
-					if div:GetRight() then
-						div:GetRight():Remove()
-					end
-
-					local effect = Effects[selNode.effect]
-			
-					local propPanel = UltiPar.CreateEffectPropertyPanel(actionName, effect, effecttree)
-					propPanel:SetParent(UserPanel)
-					
-					local rightwidth = width - div:GetLeftWidth()
-					rightwidth = rightwidth < 80 and 200 or rightwidth
-
-					div:SetRight(propPanel)
-					div:SetLeftWidth(width - rightwidth)
-
-					curSelectedNode = selNode
-				end
-				clicktime = CurTime()
-			end
-
-			effecttree:RefreshNode()
-
-			Tabs:AddSheet('#ultipar.effect', UserPanel, 'icon16/user.png', false, false, '')
-		end
-
-		if isfunction(action.CreateOptionMenu) then
-			local DScrollPanel = vgui.Create('DScrollPanel', Tabs)
-			local OptionPanel = vgui.Create('DForm', DScrollPanel)
-			OptionPanel:SetLabel('Options')
-			OptionPanel:Dock(FILL)
-			OptionPanel.Paint = function(self, w, h)
-				draw.RoundedBox(0, 0, 0, w, h, white)
-			end
-
-			action.CreateOptionMenu(OptionPanel)
-
-			Tabs:AddSheet('#ultipar.options', DScrollPanel, 'icon16/wrench.png', false, false, '')
-		end
-	end
-end
-
--- 加载动作文件
-local function LoadLuaFiles()
-	local filelist = file.Find('ultipar/*.lua', 'LUA')
 	for _, filename in pairs(filelist) do
 		client = string.StartWith(filename, 'cl_')
 		server = string.StartWith(filename, 'sv_')
 
 		if SERVER then
 			if not client then
-				include('ultipar/' .. filename)
+				include(dir .. filename)
 				print('[UltiPar]: AddFile:' .. filename)
 			end
 
 			if not server then
-				AddCSLuaFile('ultipar/' .. filename)
+				AddCSLuaFile(dir .. filename)
 			end
 		else
 			if client or not server then
-				include('ultipar/' .. filename)
-				print('[UltiPar]: AddFile:' .. filename)
-			end
-		end
-	end
-end
-
-local function LoadEffectLuaFiles()
-	local filelist = file.Find('ultipar/effects/*.lua', 'LUA')
-	for _, filename in pairs(filelist) do
-		client = string.StartWith(filename, 'cl_')
-		server = string.StartWith(filename, 'sv_')
-
-		if SERVER then
-			if not client then
-				include('ultipar/effects/' .. filename)
-				print('[UltiPar]: AddFile:' .. filename)
-			end
-
-			if not server then
-				AddCSLuaFile('ultipar/effects/' .. filename)
-			end
-		else
-			if client or not server then
-				include('ultipar/effects/' .. filename)
+				include(dir .. filename)
 				print('[UltiPar]: AddFile:' .. filename)
 			end
 		end
@@ -944,37 +305,6 @@ local function LoadEffectLuaFiles()
 end
 
 
-UltiPar.LoadLuaFiles = function()
-	if CLIENT then
-		if not GetConVar('developer'):GetBool() then
-			LocalPlayer():ChatPrint('[UltiPar]: must set "developer" to 1 before loading lua files')
-			return
-		end
-
-		net.Start('UltiParLoadLuaFiles')
-		net.SendToServer()
-	elseif SERVER then
-		LoadLuaFiles()
-		net.Start('UltiParLoadLuaFiles')
-		net.Broadcast()
-	end
-end
-
-if SERVER then
-	util.AddNetworkString('UltiParLoadLuaFiles')
-
-	net.Receive('UltiParLoadLuaFiles', function(len, ply)
-		if not IsValid(ply) or not ply:IsSuperAdmin() then 
-			ply:ChatPrint('[UltiPar]: must be super admin to load lua files')
-			return 
-		end
-		UltiPar.LoadLuaFiles()
-	end)
-elseif CLIENT then
-	net.Receive('UltiParLoadLuaFiles', function()
-		LoadLuaFiles()
-	end)
-end
-
-LoadLuaFiles()
-LoadEffectLuaFiles()
+UltiPar.LoadLuaFiles('core')
+UltiPar.LoadLuaFiles('actions')
+UltiPar.LoadLuaFiles('effects')

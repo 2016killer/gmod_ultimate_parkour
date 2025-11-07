@@ -6,7 +6,6 @@
 UltiPar = UltiPar or {}
 
 UltiPar.EffectTest = function(ply, actionName, effectName)
-	
 	local action = UltiPar.GetAction(actionName)
 	if not action then
 		return
@@ -19,9 +18,9 @@ UltiPar.EffectTest = function(ply, actionName, effectName)
 		return
 	end
 
-	effect:start(ply, nil)
+	effect:start(ply)
 	timer.Simple(1, function()
-		effect:clear(ply, nil)
+		effect:clear(ply)
 	end)
 	if CLIENT then
 		net.Start('UltiParEffectTest')

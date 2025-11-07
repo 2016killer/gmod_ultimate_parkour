@@ -3,8 +3,10 @@
 	2025 11 1
 
 --]]
+UltiPar = UltiPar or {}
+UltiPar.DisabledSet = UltiPar.DisabledSet or {}
 
-local function ReadActionDisable()
+UltiPar.ReadActionDisable = function()
 	if SERVER then 
 		local contents = sql.Query("SELECT * FROM ulitpar_action_disable")
 		if contents == nil then return {} end
@@ -23,7 +25,7 @@ local function ReadActionDisable()
 	end
 end
 
-local function WriteActionDisable(contents)
+UltiPar.WriteActionDisable = function(contents)
 	if SERVER then  
 		sql.Query("DELETE FROM ulitpar_action_disable; VACUUM;")
 		PrintTable(contents)
@@ -50,10 +52,6 @@ local function WriteActionDisable(contents)
 	end
 end
 
-UltiPar = UltiPar or {}
-UltiPar.ReadActionDisable = ReadActionDisable
-UltiPar.WriteActionDisable = WriteActionDisable
-UltiPar.DisabledSet = UltiPar.DisabledSet or {}
 
 if SERVER then
 	util.AddNetworkString('UltiParActionDisable')
