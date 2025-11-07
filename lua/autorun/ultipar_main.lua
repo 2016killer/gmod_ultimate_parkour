@@ -44,7 +44,7 @@
 		end,
 	}
 
-	Trigger: Check -> StartEffect-> Play -> Clear -> ClearEffect
+	Trigger: Check -> Start -> StartEffect-> Play -> Clear -> ClearEffect
 --]]
 
 local function printdata(flag, ...)
@@ -92,6 +92,7 @@ local UltiPar = UltiPar
 UltiPar.ActionSet = UltiPar.ActionSet or {}
 UltiPar.DisabledSet = UltiPar.DisabledSet or {}
 UltiPar.emptyfunc = function() end
+UltiPar.printdata = printdata
 
 local DisabledSet = UltiPar.DisabledSet
 local ActionSet = UltiPar.ActionSet
@@ -128,7 +129,7 @@ UltiPar.Register = function(name, action)
 			ply, ...
 		)
 
-		return 'fuck', 'shit'
+		return false
 	end
 
 	action.Start = action.Start or function(self, ply, ...)
@@ -144,7 +145,7 @@ UltiPar.Register = function(name, action)
 				string.format('Play Action "%s"', self.Name),
 				ply, ...
 			)
-			return {mygod = true}
+			return true
 		end
 	end
 

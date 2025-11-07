@@ -75,7 +75,7 @@ if SERVER then
 			end
 
 			local contents = net.ReadTable()
-			WriteActionDisable(contents)
+			UltiPar.WriteActionDisable(contents)
 			table.Merge(UltiPar.DisabledSet, contents)
 
 			-- 广播更新

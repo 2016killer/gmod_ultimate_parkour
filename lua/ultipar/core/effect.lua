@@ -26,19 +26,19 @@ UltiPar.RegisterEffect = function(actionName, effectName, effect)
 	end
 	
 	effect.Name = effectName
-	effect.start = effect.start or function(ply, ...)
+	effect.start = effect.start or function(self, ply, ...)
 		-- 特效
-		printdata(
+		UltiPar.printdata(
 			string.format('start Action "%s" Effect "%s"', actionName, effectName),
 			ply, ...
 		)
 	end
 
-	effect.clear = effect.clear or function(ply, ...)
+	effect.clear = effect.clear or function(self, ply, ...)
 		-- 当中断或强制退出时enddata为nil, 否则为表
 		-- 强制中断时 breaker 为 true	
 		-- 清除特效
-		printdata(
+		UltiPar.printdata(
 			string.format('clear Action "%s" Effect "%s"', actionName, effectName),
 			ply, ...
 		)

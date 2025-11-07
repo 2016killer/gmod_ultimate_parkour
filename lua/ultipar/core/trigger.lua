@@ -15,64 +15,72 @@ local TRIGGERNW_FLAG_END = UltiPar.TRIGGERNW_FLAG_END
 local TRIGGERNW_FLAG_INTERRUPT = UltiPar.TRIGGERNW_FLAG_INTERRUPT
 local TRIGGERNW_FLAG_MOVE_CONTROL = UltiPar.TRIGGERNW_FLAG_MOVE_CONTROL
 
-local function HandleResult(result)
-	if result then
-		return table.Pack(result)
+local function HandleResult(...)
+	if select(1, ...) then
+		return table.Pack(...)
 	else
 		return nil
 	end
 end
 
+
+local function StartTriggerNet(ply)
+	ply.ultipar_tnet = ply.ultipar_tnet or {}
+end
+
+local function WriteStart(ply, actionName, data)
+	local target = ply.ultipar_tnet
+	table.Add(target, {TRIGGERNW_FLAG_START, actionName, #data})
+	table.Add(target, data)
+end
+
+local function WriteEnd(ply, actionName, data)
+	local target = ply.ultipar_tnet
+	table.Add(target, {TRIGGERNW_FLAG_END, actionName, #data})
+	table.Add(target, data)
+end
+
+local function WriteInterrupt(ply, actionName, data, breakerName)
+	local target = ply.ultipar_tnet
+	table.Add(target, {TRIGGERNW_FLAG_INTERRUPT, actionName, #data + 1, breakerName})
+	table.Add(target, data)
+end
+
+local function WriteMoveControl(ply, enable, ClearMovement, RemoveKeys, AddKeys)
+	local target = ply.ultipar_tnet
+	table.Add(target, {TRIGGERNW_FLAG_MOVE_CONTROL,
+		'', 4, enable, ClearMovement, RemoveKeys, AddKeys
+	})
+end
+
+local function SendTriggerNet(ply)
+	if not ply.ultipar_tnet then 
+		ErrorNoHalt('UltiPar: SendTriggerNet: ply.ultipar_tnet is nil\n')
+		return 
+	end
+	net.Start('UltiParEvents')
+		net.WriteTable(ply.ultipar_tnet, true)
+	net.Send(ply)
+	ply.ultipar_tnet = nil
+end
+
 if SERVER then
-	local function StartTriggerNet(ply)
-		ply.ultipar_tnet = ply.ultipar_tnet or {}
-	end
-
-	local function WriteStart(ply, actionName, data)
-		local target = ply.ultipar_tnet
-		table.Add(target, {TRIGGERNW_FLAG_START, actionName, #data})
-		table.Add(target, data)
-	end
-
-	local function WriteEnd(ply, actionName, data)
-		local target = ply.ultipar_tnet
-		table.Add(target, {TRIGGERNW_FLAG_END, actionName, #data})
-		table.Add(target, data)
-	end
-
-	local function WriteInterrupt(ply, actionName, data, breakerName)
-		local target = ply.ultipar_tnet
-		table.Add(target, {TRIGGERNW_FLAG_INTERRUPT, actionName, #data + 1, breakerName})
-		table.Add(target, data)
-	end
-
-	local function WriteMoveControl(ply, enable, ClearMovement, RemoveKeys, AddKeys)
-		local target = ply.ultipar_tnet
-		table.Add(target, {TRIGGERNW_FLAG_MOVE_CONTROL,
-			'', 4, enable, ClearMovement, RemoveKeys, AddKeys
-		})
-	end
-
-	local function SendTriggerNet(ply)
-		if not ply.ultipar_tnet then 
-			ErrorNoHalt('UltiPar: SendTriggerNet: ply.ultipar_tnet is nil\n')
-			return 
-		end
-		net.Start('UltiParEvents')
-			net.WriteTable(ply.ultipar_tnet, true)
-		net.Send(ply)
-		ply.ultipar_tnet = nil
-	end
-
 	UltiPar.StartTriggerNet = StartTriggerNet
 	UltiPar.WriteStart = WriteStart
 	UltiPar.WriteEnd = WriteEnd
 	UltiPar.WriteInterrupt = WriteInterrupt
 	UltiPar.WriteMoveControl = WriteMoveControl
+else
+	StartTriggerNet = nil
+	WriteStart = nil
+	WriteEnd = nil
+	WriteInterrupt = nil
+	WriteMoveControl = nil
 end
 
 local IsActionDisable = UltiPar.IsActionDisable
 local GetPlayerCurrentEffect = UltiPar.GetPlayerCurrentEffect
+local GetAction = UltiPar.GetAction
 UltiPar.Trigger = function(ply, action, checkResult, ...)
 	-- 动作触发器
 	-- checkResult 用于绕过Check, 直接执行
@@ -172,7 +180,7 @@ if SERVER then
 			return 
 		end
 
-		Trigger(ply, action, checkResult)
+		UltiPar.Trigger(ply, action, checkResult)
 	end)
 
 	hook.Add('SetupMove', 'ultipar.play', function(ply, mv, cmd)
@@ -184,15 +192,16 @@ if SERVER then
 		local playingData = ply.ultipar_playing_data
 
 		local endResult = HandleResult(pcall(playing.Play, playing, ply, mv, cmd, unpack(playingData)))
-		if not endResult then
-			return
-		end
 
 		-- 异常处理
 		local succ, err = endResult[1], endResult[2]
 		if not succ then
 			ErrorNoHalt(string.format('Action "%s" Play error: %s\n', playing.Name, err))
 			ForceEnd(ply)
+			return
+		end
+
+		if not endResult[2] then
 			return
 		end
 
@@ -226,7 +235,7 @@ if SERVER then
 	concommand.Add('up_forceend', ForceEnd)
 elseif CLIENT then
 	function HandleTriggerData(data, point)
-		local point = 1
+		point = point or 1
 
 		local flag = data[point]
 		local actionName = data[point + 1]
@@ -240,8 +249,11 @@ elseif CLIENT then
 	net.Receive('UltiParEvents', function(len, ply)
 		local data = net.ReadTable(true)
 		
-		local point = 1 
-		while point <= #data do
+		ply = LocalPlayer()
+
+		local depth = 0
+		local point = 1
+		while point <= #data and depth < 5 do
 			local flag, actionName, result, nextPoint = HandleTriggerData(data, point)
 			point = nextPoint
 
@@ -283,6 +295,7 @@ elseif CLIENT then
 					GetAction(breakerName), nil
 				)
 			end
+			depth = depth + 1
 		end
 	end)
 
