@@ -389,11 +389,6 @@ UltiPar.CreateGlobalMenu = function(panel)
 	UltiPar.ActionManager = tree
 	UltiPar.ReadActionDisable()
 
-	local LoadLuaButton = panel:Button('#ultipar.loadlua')
-	LoadLuaButton.DoClick = function()
-		UltiPar.LoadLuaFiles()
-	end
-
 	panel:ControlHelp(UltiPar.Version)
 end
 

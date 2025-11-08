@@ -28,14 +28,14 @@ UltiPar.GeneralClimbCheck = function(ply, blen, bmins, bmaxs, ehlen, evlen, losc
 	-- loscos 是否对准了障碍物
 
 	local eyeDir = XYNormal(ply:GetForward())
-	local startpos = ply:GetPos() + unitzvec
+	local plypos = ply:GetPos() + unitzvec
 
 	-- 主要是为了检查是否对准了障碍物和阻碍
 	local BlockTrace = util.TraceHull({
 		filter = ply, 
 		mask = MASK_PLAYERSOLID,
-		start = startpos,
-		endpos = startpos + eyeDir * blen,
+		start = plypos,
+		endpos = plypos + eyeDir * blen,
 		mins = bmins,
 		maxs = bmaxs,
 	})
@@ -84,8 +84,8 @@ UltiPar.GeneralClimbCheck = function(ply, blen, bmins, bmaxs, ehlen, evlen, losc
 	
 	trace.HitPos[3] = trace.HitPos[3] + 1
 
-	local landpos, blockheight = trace.HitPos, trace.HitPos[3] - startpos[3]
-	return startpos, landpos, blockheight
+	local landpos, blockheight = trace.HitPos, trace.HitPos[3] - plypos[3]
+	return plypos, landpos, blockheight
 end
 
 UltiPar.GeneralLandSpaceCheck = function(ply, startpos)
@@ -182,6 +182,21 @@ UltiPar.GeneralVaultCheck = function(ply, startpos, landpos, hlen, vlen)
 	local vaultheight = hchecktrace.HitPos[3] - startpos[3]
 
 	return vaultpos, vaultheight
+end
+
+UltiPar.GetFallDamageInfo = function(ply, fallspeed, ref)
+	fallspeed = fallspeed or ply:GetVelocity()[3]
+	if fallspeed < ref then
+		local damage = hook.Run('GetFallDamage', ply, fallspeed) or 0
+		if damage > 0 then
+			local d = DamageInfo()
+			d:SetDamage(damage)
+			d:SetAttacker(Entity(0))
+			d:SetDamageType(DMG_FALL) 
+
+			return d	
+		end 
+	end
 end
 
 UltiPar.unitzvec = unitzvec

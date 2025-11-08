@@ -47,7 +47,7 @@ if CLIENT then
 
 		local accidentBreakTestButton = panel:Button('Accident Break Test', '')
 		accidentBreakTestButton.DoClick = function()
-			UltiPar.Trigger(LocalPlayer(), action, {shit = true})
+			UltiPar.Trigger(LocalPlayer(), action, false, 'Shit', 'fuck')
 			timer.Simple(1, function()
 				RunConsoleCommand('kill')
 			end)
@@ -55,9 +55,10 @@ if CLIENT then
 
 		local interruptTestButton = panel:Button('Interrupt Test', '')
 		interruptTestButton.DoClick = function()
-			UltiPar.Trigger(LocalPlayer(), action, {shit = true})
+			UltiPar.Trigger(LocalPlayer(), action, false, 'Shit', 'fuck')
+			local interruptAction = UltiPar.GetAction('InterruptTest')
 			timer.Simple(1, function()
-				UltiPar.Trigger(LocalPlayer(), action2)
+				UltiPar.Trigger(LocalPlayer(), interruptAction)
 			end)
 		end
 

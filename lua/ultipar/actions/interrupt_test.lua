@@ -7,16 +7,21 @@
 if not GetConVar('developer'):GetBool() then return end
 
 
-local actionName2 = 'InterruptTest'
-local action2, _ = UltiPar.Register(actionName2)
+
+local actionName = 'InterruptTest'
+local action, _ = UltiPar.Register(actionName)
 
 local function InterruptFunc(ply, ...)
-	UltiPar.printdata('InterruptFunc', ...)
+	UltiPar.printdata('InterruptFunc', ply, ...)
+	return true
 end
 
+local lifecycleTestAction, _ = UltiPar.Register('LifeCycleTest')
+lifecycleTestAction.Interrupts[actionName] = InterruptFunc
 
-action2.Check = function() print('Check ' .. actionName2); return true end
-action2.Start = function() print('Start ' .. actionName2); return true end
-action2.Play = function() print('Play ' .. actionName2); return true end
-action2.Clear = function() print('Clear ' .. actionName2) end
+
+action.Check = function() print('Check ' .. actionName); return true end
+action.Start = function() print('Start ' .. actionName); return true end
+action.Play = function() print('Play ' .. actionName); return true end
+action.Clear = function() print('Clear ' .. actionName) end
 

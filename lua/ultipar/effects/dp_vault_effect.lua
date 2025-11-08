@@ -1,9 +1,9 @@
-// --[[
-// 作者:白狼
-// 2025 11 5
-// ]]--
+--[[
+作者:白狼
+2025 11 5
+]]--
 
-// -- ====================  翻越动作特效 ===============
+-- ====================  翻越动作特效 ===============
 // local actionName = 'DParkour-Vault'
 
 // local function effectstart_default(self, ply, data)
@@ -61,4 +61,3 @@
 // effect = nil
 // effectstart_default = nil
 // effect2 = nil
-print(3)

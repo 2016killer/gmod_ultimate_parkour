@@ -110,19 +110,19 @@ UltiPar.Trigger = function(ply, action, checkResult, ...)
 
 
 	if SERVER then
-		action:Start(ply, unpack(checkResult))
-
-		-- 执行特效
-		local effect = GetPlayerCurrentEffect(ply, action)
-		if effect then 
-			effect:start(ply, unpack(checkResult)) 
-		end
-
-		-- 启动播放
-		ply.ultipar_playing = action
-		ply.ultipar_playing_data = checkResult
-
 		StartTriggerNet(ply)
+			action:Start(ply, unpack(checkResult))
+
+			-- 执行特效
+			local effect = GetPlayerCurrentEffect(ply, action)
+			if effect then 
+				effect:start(ply, unpack(checkResult)) 
+			end
+
+			-- 启动播放
+			ply.ultipar_playing = action
+			ply.ultipar_playing_data = checkResult
+
 			if playing then
 				WriteInterrupt(ply, playing.Name, playingData, actionName)
 			end
@@ -191,7 +191,7 @@ if SERVER then
 
 		local playingData = ply.ultipar_playing_data
 
-		local endResult = HandleResult(pcall(playing.Play, playing, ply, mv, cmd, unpack(playingData)))
+		local endResult = table.Pack(pcall(playing.Play, playing, ply, mv, cmd, unpack(playingData)))
 
 		-- 异常处理
 		local succ, err = endResult[1], endResult[2]
@@ -208,15 +208,14 @@ if SERVER then
 		if endResult then
 			ply.ultipar_playing = nil
 			ply.ultipar_playing_data = nil
-
-			playing:Clear(ply, unpack(endResult, 2))
-
-			local effect = GetPlayerCurrentEffect(ply, playing)
-			if effect then 
-				effect:clear(ply, unpack(endResult, 2)) 
-			end
-
 			StartTriggerNet(ply)
+				playing:Clear(ply, unpack(endResult, 2))
+
+				local effect = GetPlayerCurrentEffect(ply, playing)
+				if effect then 
+					effect:clear(ply, unpack(endResult, 2)) 
+				end
+
 				-- 这里endResult第一位是pcall的返回值, 客户端需要去掉
 				WriteEnd(ply, playing.Name, endResult)
 				WriteMoveControl(ply, false, false, 0, 0)
@@ -246,9 +245,9 @@ elseif CLIENT then
 		return flag, actionName, result, point + 3 + len
 	end
 
+	local MoveControl = {}
 	net.Receive('UltiParEvents', function(len, ply)
 		local data = net.ReadTable(true)
-		
 		ply = LocalPlayer()
 
 		local depth = 0
@@ -258,23 +257,23 @@ elseif CLIENT then
 			point = nextPoint
 
 			local action = GetAction(actionName)
-			if not action then 
+			if not action and flag ~= TRIGGERNW_FLAG_MOVE_CONTROL then 
 				return 
 			end
 
-			local effect = GetPlayerCurrentEffect(ply, action)
-
 			if flag == TRIGGERNW_FLAG_START then
 				action:Start(ply, unpack(result))
+				local effect = GetPlayerCurrentEffect(ply, action)
 				if effect then 
 					effect:start(ply, unpack(result)) 
 				end
 
 				hook.Run('UltiParStart', ply, action, result)
 			elseif flag == TRIGGERNW_FLAG_END then
-				action:Clear(ply, unpack(result))
+				action:Clear(ply, unpack(result, 2))
+				local effect = GetPlayerCurrentEffect(ply, action)
 				if effect then 
-					effect:clear(ply, unpack(result)) 
+					effect:clear(ply, unpack(result, 2)) 
 				end
 
 				hook.Run('UltiParEnd', ply, action, result)
@@ -299,7 +298,7 @@ elseif CLIENT then
 		end
 	end)
 
-	local MoveControl = {}
+	
 	hook.Add('CreateMove', 'ultipar.move.control', function(cmd)
 		if not MoveControl.enable then return end
 		if MoveControl.ClearMovement then
