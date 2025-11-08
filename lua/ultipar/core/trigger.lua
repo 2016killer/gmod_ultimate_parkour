@@ -99,7 +99,7 @@ UltiPar.Trigger = function(ply, action, checkResult, ...)
 
 	checkResult = istable(checkResult) and checkResult or HandleResult(action:Check(ply, ...))
 	if not checkResult then
-		return
+		return checkResult, false
 	end
 
 	if playing then
@@ -144,7 +144,7 @@ UltiPar.Trigger = function(ply, action, checkResult, ...)
 		net.SendToServer()
 	end
 
-	return checkResult
+	return checkResult, true
 end
 
 
