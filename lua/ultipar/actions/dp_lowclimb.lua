@@ -157,11 +157,12 @@ function action:Check(ply)
     return startpos,
         landpos,
         blockheight,
-        dir,
+		plyvel,
         startspeed,
         endspeed, 
         duration,
-        CurTime()
+        CurTime(),
+		dir
 end
 
 function action:Start(ply, startpos, landpos, ...)
@@ -173,7 +174,7 @@ function action:Start(ply, startpos, landpos, ...)
 	ply:SetMoveType(MOVETYPE_NOCLIP)
 end
 
-function action:Play(ply, mv, cmd, startpos, landpos, blockheight, dir, startspeed, endspeed, duration, starttime)
+function action:Play(ply, mv, cmd, startpos, landpos, blockheight, plyvel, startspeed, endspeed, duration, starttime, dir)
 	-- 保险一点
 	local dt = CurTime() - starttime
 
@@ -182,15 +183,21 @@ function action:Play(ply, mv, cmd, startpos, landpos, blockheight, dir, startspe
 
 	mv:SetOrigin(startpos + (0.5 * acc * dt * dt + startspeed * dt) * dir)
 
-    if endflag then 
-		mv:SetOrigin(landpos)
+	if endflag then 
+		return landpos
+	else
+		return nil
 	end
-
-	return endflag
 end
 
-function action:Clear(ply, ...)
+function action:Clear(ply, mv, cmd, landpos)
     ply:SetMoveType(MOVETYPE_WALK)
+	if SERVER then
+		-- 开环控制必须加这个
+	    if UltiPar.GeneralLandSpaceCheck(ply, ply:GetPos()) then
+			mv:SetOrigin(landpos)
+		end
+    end
 end
 
 if CLIENT then

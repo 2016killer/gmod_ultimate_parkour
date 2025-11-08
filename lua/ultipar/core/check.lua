@@ -103,7 +103,7 @@ UltiPar.GeneralLandSpaceCheck = function(ply, startpos)
 	return spacecheck.StartSolid or spacecheck.Hit 
 end
 
-UltiPar.GeneralVaultCheck = function(ply, startpos, landpos, hlen, vlen)
+UltiPar.GeneralVaultCheck = function(ply, plypos, landpos, hlen, vlen)
 	-- 通用翻越检查, 在GeneralClimbCheck后面
 	-- 主要检测障碍物的镜像面是否符合条件
 
@@ -179,7 +179,7 @@ UltiPar.GeneralVaultCheck = function(ply, startpos, landpos, hlen, vlen)
 	end
 
 	local vaultpos = hchecktrace.HitPos + eyeDir * math.min(2, hchecktrace.Fraction * maxVaultWidth)
-	local vaultheight = hchecktrace.HitPos[3] - startpos[3]
+	local vaultheight = hchecktrace.HitPos[3] - plypos[3]
 
 	return vaultpos, vaultheight
 end

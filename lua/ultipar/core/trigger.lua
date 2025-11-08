@@ -93,14 +93,8 @@ UltiPar.Trigger = function(ply, action, checkResult, ...)
 	-- 检查中断
 	local playing = ply.ultipar_playing
 	local playingData = ply.ultipar_playing_data
-	if playing then
-		local interruptFunc = playing.Interrupts[actionName]
-		if isfunction(interruptFunc) and interruptFunc(ply, unpack(playingData)) then
-			ply.ultipar_playing = nil
-			ply.ultipar_playing_data = nil
-		else
-			return
-		end
+	if SERVER and playing and not playing.Interrupts[actionName] then
+		return
 	end
 
 	checkResult = istable(checkResult) and checkResult or HandleResult(action:Check(ply, ...))
@@ -108,6 +102,16 @@ UltiPar.Trigger = function(ply, action, checkResult, ...)
 		return
 	end
 
+	if playing then
+		-- 检查中断函数
+		local interruptsFunc = playing.InterruptsFunc[actionName]
+		if isfunction(interruptsFunc) and not interruptsFunc(ply, playing, unpack(playingData)) then
+			return
+		end
+
+		ply.ultipar_playing = nil
+		ply.ultipar_playing_data = nil
+	end
 
 	if SERVER then
 		StartTriggerNet(ply)
@@ -165,6 +169,10 @@ if SERVER then
 			SendTriggerNet(ply)
 
 			hook.Run('UltiParEnd', ply, action, {})
+		else
+			StartTriggerNet(ply)
+				WriteMoveControl(ply, false, false, 0, 0)
+			SendTriggerNet(ply)
 		end
 	end
 
@@ -209,7 +217,7 @@ if SERVER then
 			ply.ultipar_playing = nil
 			ply.ultipar_playing_data = nil
 			StartTriggerNet(ply)
-				playing:Clear(ply, unpack(endResult, 2))
+				playing:Clear(ply, mv, cmd, unpack(endResult, 2))
 
 				local effect = GetPlayerCurrentEffect(ply, playing)
 				if effect then 
@@ -252,7 +260,7 @@ elseif CLIENT then
 
 		local depth = 0
 		local point = 1
-		while point <= #data and depth < 5 do
+		while point <= #data and depth < 7 do
 			local flag, actionName, result, nextPoint = HandleTriggerData(data, point)
 			point = nextPoint
 
@@ -270,7 +278,7 @@ elseif CLIENT then
 
 				hook.Run('UltiParStart', ply, action, result)
 			elseif flag == TRIGGERNW_FLAG_END then
-				action:Clear(ply, unpack(result, 2))
+				action:Clear(ply, nil, nil, unpack(result, 2))
 				local effect = GetPlayerCurrentEffect(ply, action)
 				if effect then 
 					effect:clear(ply, unpack(result, 2)) 

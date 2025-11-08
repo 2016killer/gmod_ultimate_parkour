@@ -8,29 +8,6 @@ local UltiPar = UltiPar
 ---------------------- 菜单 ----------------------
 local convars = {
 	{
-		name = 'dp_workmode',
-		default = '1',
-		widget = 'CheckBox',
-		help = true,
-	},
-
-	{
-		name = 'dp_los_cos',
-		default = '0.64',
-		widget = 'NumSlider',
-		min = 0,
-		max = 1,
-		decimals = 2,
-		help = true,
-	},
-
-	{
-		name = 'dp_falldamage',
-		default = '1',
-		widget = 'CheckBox'
-	},
-
-	{
 		name = 'dp_hc_keymode',
 		default = '1',
 		widget = 'CheckBox',
@@ -76,9 +53,10 @@ local convars = {
 }
 
 UltiPar.CreateConVars(convars)
-local dp_workmode = GetConVar('dp_workmode')
-local dp_los_cos = GetConVar('dp_los_cos')
-local dp_falldamage = GetConVar('dp_falldamage')
+
+local dp_workmode = CreateConVar('dp_workmode', '1', { FCVAR_ARCHIVE, FCVAR_CLIENTCMD_CAN_EXECUTE, FCVAR_NOTIFY, FCVAR_SERVER_CAN_EXECUTE })
+local dp_los_cos = CreateConVar('dp_los_cos', '0.64', { FCVAR_ARCHIVE, FCVAR_CLIENTCMD_CAN_EXECUTE, FCVAR_NOTIFY, FCVAR_SERVER_CAN_EXECUTE })
+local dp_falldamage = CreateConVar('dp_falldamage', '1', { FCVAR_ARCHIVE, FCVAR_CLIENTCMD_CAN_EXECUTE, FCVAR_NOTIFY, FCVAR_SERVER_CAN_EXECUTE })
 local dp_hc_keymode = GetConVar('dp_hc_keymode')
 local dp_hc_per = GetConVar('dp_hc_per')
 local dp_hc_blen = GetConVar('dp_hc_blen')
@@ -156,12 +134,12 @@ function action:Check(ply)
     return startpos,
         landpos,
         blockheight,
-        dir,
+		plyvel,
         startspeed,
         endspeed, 
         duration,
-        CurTime()
-
+        CurTime(),
+		dir
 end
 
 function action:Start(ply, startpos, landpos, ...)
@@ -173,7 +151,7 @@ function action:Start(ply, startpos, landpos, ...)
 	ply:SetMoveType(MOVETYPE_NOCLIP)
 end
 
-function action:Play(ply, mv, cmd, startpos, landpos, blockheight, dir, startspeed, endspeed, duration, starttime)
+function action:Play(ply, mv, cmd, startpos, landpos, blockheight, plyvel, startspeed, endspeed, duration, starttime, dir)
 	local dt = CurTime() - starttime
 
 	local target = nil
@@ -197,14 +175,20 @@ function action:Play(ply, mv, cmd, startpos, landpos, blockheight, dir, startspe
 	)
 
 	if endflag then 
-		mv:SetOrigin(landpos)
+		return landpos
+	else
+		return nil
 	end
-
-	return endflag
 end
 
-function action:Clear(ply, ...)
+function action:Clear(ply, mv, cmd, landpos)
     ply:SetMoveType(MOVETYPE_WALK)
+	if SERVER then
+		-- 开环控制必须加这个
+	    if UltiPar.GeneralLandSpaceCheck(ply, ply:GetPos()) then
+			mv:SetOrigin(landpos)
+		end
+    end
 end
 
 if CLIENT then

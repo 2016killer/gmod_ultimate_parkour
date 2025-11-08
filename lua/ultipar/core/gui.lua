@@ -47,8 +47,14 @@ end
 UltiPar.CreateEffectPropertyPanel = function(actionName, effect, effecttree)
 	local panel = vgui.Create('DForm')
 	local iscustom = !!effect.linkName
+
+	local keys = {}
+	for k, v in pairs(effect) do table.insert(keys, k) end
+	table.sort(keys)
+
 	if iscustom then
-		for k, v in pairs(effect) do
+		for _, k in ipairs(keys) do
+			local v = effect[k]
 			if k == 'label' or k == 'linkName' or k == 'Name' then
 				continue
 			elseif isstring(v) then
@@ -95,14 +101,18 @@ UltiPar.CreateEffectPropertyPanel = function(actionName, effect, effecttree)
 		saveButton:SetText('#ultipar.save')
 		saveButton.DoClick = function()
 			local effectConfig = LocalPlayer().ultipar_effect_config
+			local customEffects = LocalPlayer().ultipar_effects_custom
 
 			effectConfig[actionName] = 'Custom'
-			effectConfig['CUSTOM'] = effectConfig['CUSTOM'] or {}
-			effectConfig['CUSTOM'][actionName] = effect
-
+			customEffects[actionName] = effect
+	
 			UltiPar.InitCustomEffect(actionName, effect)
-			UltiPar.SaveEffectConfigToDisk(effectConfig)
+	
+			UltiPar.SaveUserDataToDisk(effectConfig, 'ultipar/effect_config.json')
+			UltiPar.SaveUserDataToDisk(customEffects, 'ultipar/effects_custom.json')
+		
 			UltiPar.SendEffectConfigToServer(effectConfig)
+			UltiPar.SendCustomEffectsToServer(customEffects)
 			// PrintTable(effectConfig)
 		end
 
@@ -126,21 +136,26 @@ UltiPar.CreateEffectPropertyPanel = function(actionName, effect, effecttree)
 
 		customButton.DoClick = function()
 			local effectConfig = LocalPlayer().ultipar_effect_config
+			local customEffects = LocalPlayer().ultipar_effects_custom
 			local custom = UltiPar.CreateCustomEffect(actionName, effect.Name)
 
 			effectConfig[actionName] = 'Custom'
-			effectConfig['CUSTOM'] = effectConfig['CUSTOM'] or {}
-			effectConfig['CUSTOM'][actionName] = custom
-
+			customEffects[actionName] = custom
+	
 			UltiPar.InitCustomEffect(actionName, custom)
-			UltiPar.SaveEffectConfigToDisk(effectConfig)
+		
+			UltiPar.SaveUserDataToDisk(effectConfig, 'ultipar/effect_config.json')
+			UltiPar.SaveUserDataToDisk(customEffects, 'ultipar/effects_custom.json')
+
 			UltiPar.SendEffectConfigToServer(effectConfig)
+			UltiPar.SendCustomEffectsToServer(customEffects)
 			// PrintTable(effectConfig)
 			effecttree.Effects['Custom'] = custom
 			effecttree:RefreshNode()
 		end
 		
-		for k, v in pairs(effect) do
+		for _, k in ipairs(keys) do
+			local v = effect[k]
 			panel:Help(k .. '=' .. PropertyViewText(v))
 		end
 
@@ -170,9 +185,10 @@ UltiPar.CreateActionEditor = function(actionName)
 	Tabs:Dock(FILL)
 
 	local effectConfig = LocalPlayer().ultipar_effect_config
-	local customEffect = (effectConfig['CUSTOM'] or {})[actionName]
+	local customEffect = LocalPlayer().ultipar_effects_custom[actionName]
 	
-	local Effects = table.Copy(action.Effects)
+	local Effects = {}
+	for k, v in pairs(action.Effects) do Effects[k] = v end
 	if customEffect then Effects['Custom'] = customEffect end
 	
 
@@ -215,6 +231,14 @@ UltiPar.CreateActionEditor = function(actionName)
 				
 				playButton.DoClick = function()
 					UltiPar.EffectTest(LocalPlayer(), action.Name, node.effect)
+
+					print(node.effect)
+					effectConfig[action.Name] = node.effect
+
+					UltiPar.SaveUserDataToDisk(effectConfig, 'ultipar/effect_config.json')
+					UltiPar.SendEffectConfigToServer(effectConfig)
+
+					self:RefreshNode()
 				end
 			end
 		end
@@ -223,10 +247,13 @@ UltiPar.CreateActionEditor = function(actionName)
 		local clicktime = 0
 		effecttree.OnNodeSelected = function(self, selNode)
 			if CurTime() - clicktime < 0.2 and curSelectedNode == selNode and self.currentEffect ~= selNode.effect then
+				UltiPar.EffectTest(LocalPlayer(), action.Name, selNode.effect)
+
+				print(selNode.effect)
 				effectConfig[action.Name] = selNode.effect
 				
 				UltiPar.SendEffectConfigToServer(effectConfig)
-				UltiPar.SaveEffectConfigToDisk(effectConfig)
+				UltiPar.SaveUserDataToDisk(effectConfig, 'ultipar/effect_config.json')
 				effecttree:RefreshNode()
 
 				curSelectedNode = nil

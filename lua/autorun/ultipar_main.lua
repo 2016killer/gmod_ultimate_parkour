@@ -20,12 +20,16 @@
 
 		-- 定义其他动作中断时的行为
 		Interrupts = {
-			ExampleAcitonName = function(self, ply, ...(checkResult))
+			ExampleAcitonName = true
+		}
+
+		InterruptsFunc = {
+			ExampleAcitonName = function(self, ply, playingAction, ...(checkResult))
 				-- 在这里定义中断行为
 				-- 可能需要清理特效之类的
-				return (true or false)
+				return (true or false) -- 是否中断
 			end
-		}
+		},
 
 		Check = function(self, ply, ...)
 			-- 检查动作是否可执行
@@ -40,7 +44,7 @@
 			return endResult
 		end,
 
-		Clear = function(self, ply, ...(endResult))
+		Clear = function(self, ply, mv, cmd, ...(endResult))
 		end,
 	}
 
@@ -123,6 +127,7 @@ UltiPar.Register = function(name, action)
 	action.Name = name
 	action.Effects = action.Effects or {}
 	action.Interrupts = action.Interrupts or {}
+	action.InterruptsFunc = action.InterruptsFunc or {}
 	action.Check = action.Check or function(self, ply, ...)
 		printdata(
 			string.format('Check Action "%s"', self.Name),
@@ -175,6 +180,10 @@ UltiPar.ToggleActionDisable = function(actionName)
 	DisabledSet[actionName] = !DisabledSet[actionName]
 end
 
+UltiPar.EnableInterrupt = function(actionName1, actionName2)
+	local action1 = UltiPar.Register(actionName1)
+	action1.Interrupts[actionName2] = true
+end
 
 UltiPar.LoadLuaFiles = function(path)
 	local dir = string.format('ultipar/%s/', path)
@@ -227,6 +236,11 @@ if CLIENT then
 		end
 
 		local content = util.TableToJSON(data, true)
+		if content == nil then
+			ErrorNoHalt(string.format('SaveUserDataToDisk: table to json failed, path: %s\n', path))
+			return
+		end
+
 		local succ = file.Write(path, content)
 		print(string.format('[UltiPar]: save user data to disk %s, result: %s', path, succ))
 	end
@@ -236,5 +250,7 @@ end
 UltiPar.LoadLuaFiles('core')
 UltiPar.LoadLuaFiles('actions')
 UltiPar.LoadLuaFiles('effects')
-
+UltiPar.LoadLuaFiles('effectseasy')
 UltiPar.Version = '2.0.0'
+
+file.CreateDir('ultipar')
