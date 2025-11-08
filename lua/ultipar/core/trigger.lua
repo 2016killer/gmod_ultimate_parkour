@@ -105,8 +105,16 @@ UltiPar.Trigger = function(ply, action, checkResult, ...)
 	if playing then
 		-- 检查中断函数
 		local interruptFunc = playing.InterruptsFunc[actionName]
-		if isfunction(interruptFunc) and not interruptFunc(ply, playing, unpack(playingData)) then
-			return
+		if isfunction(interruptFunc) then
+			if not interruptFunc(ply, playing, unpack(playingData)) then
+				return
+			end
+		elseif istable(interruptFunc) then
+			local flag = nil
+			for i, func in ipairs(interruptFunc) do
+				flag = func(ply, playing, unpack(playingData)) or flag
+			end
+			if flag then return end
 		end
 
 		ply.ultipar_playing = nil
@@ -296,6 +304,10 @@ elseif CLIENT then
 				local interruptFunc = action.InterruptsFunc[breakerName]
 				if isfunction(interruptFunc) then
 					interruptFunc(ply, action, unpack(result, 2))
+				elseif istable(interruptFunc) then
+					for i, func in ipairs(interruptFunc) do
+						func(ply, action, unpack(result, 2))
+					end
 				end
 
 				hook.Run('UltiParInterrupt', ply, action, result, 
