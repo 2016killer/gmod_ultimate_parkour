@@ -183,11 +183,11 @@ function action:Check(ply, startpos, landpos, blockheight, plyvel, startspeed, t
 end
 
 function action:Start(ply, ...)
+	if CLIENT then return end
 	if ply:GetMoveType() ~= MOVETYPE_NOCLIP then 
 		ply:SetMoveType(MOVETYPE_NOCLIP)
-		if CLIENT then return end
-		UltiPar.WriteMoveControl(ply, false, false, bit.bor(IN_JUMP, IN_DUCK), 0)
 	end
+	UltiPar.WriteMoveControl(ply, false, false, bit.bor(IN_JUMP, IN_DUCK), 0)
 end
 
 function action:Play(ply, mv, cmd,
