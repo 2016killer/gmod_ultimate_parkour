@@ -187,7 +187,7 @@ function action:Start(ply, ...)
 	if ply:GetMoveType() ~= MOVETYPE_NOCLIP then 
 		ply:SetMoveType(MOVETYPE_NOCLIP)
 	end
-	UltiPar.WriteMoveControl(ply, false, false, bit.bor(IN_JUMP, IN_DUCK), 0)
+	UltiPar.WriteMoveControl(ply, true, true, bit.bor(IN_JUMP, IN_DUCK), 0)
 end
 
 function action:Play(ply, mv, cmd,
