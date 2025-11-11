@@ -254,3 +254,13 @@ UltiPar.LoadLuaFiles('effectseasy')
 UltiPar.Version = '2.0.0'
 
 file.CreateDir('ultipar')
+
+if SERVER then
+	concommand.Add('up_debug_sv', function()
+		PrintTable(UltiPar)
+	end)
+elseif CLIENT then
+	concommand.Add('up_debug_cl', function()
+		PrintTable(UltiPar)
+	end)
+end
