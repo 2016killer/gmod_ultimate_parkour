@@ -211,7 +211,6 @@ if SERVER then
 	hook.Add('PlayerInitialSpawn', 'ultipar.init.effect', function(ply)
 		ply.ultipar_effect_config = ply.ultipar_effect_config or {}
 		ply.ultipar_effects_custom = ply.ultipar_effects_custom or {}
-		hook.Remove('PlayerInitialSpawn', 'ultipar.init.effect')
 	end)
 
 elseif CLIENT then
