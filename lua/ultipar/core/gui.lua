@@ -44,6 +44,12 @@ local function PropertyViewText(v)
 	return ''
 end
 
+local function GetPropertyPhrase(key, prefix)
+	prefix = prefix or 'upgui'
+	return language.GetPhrase(string.format('#%s.%s', prefix, key)) 
+end
+
+
 UltiPar.CreateEffectPropertyPanel = function(actionName, effect, effecttree)
 	local panel = vgui.Create('DForm')
 	local iscustom = !!effect.linkName
@@ -55,10 +61,11 @@ UltiPar.CreateEffectPropertyPanel = function(actionName, effect, effecttree)
 	if iscustom then
 		for _, k in ipairs(keys) do
 			local v = effect[k]
+			local keyPhrase = GetPropertyPhrase(k)
 			if k == 'label' or k == 'linkName' or k == 'Name' then
 				continue
 			elseif isstring(v) then
-				local textEntry = panel:TextEntry(k .. ':', '')
+				local textEntry = panel:TextEntry(keyPhrase .. ':', '')
 				textEntry:SetText(v)
 				textEntry.OnChange = function(self)
 					local val = self:GetText()
@@ -66,7 +73,7 @@ UltiPar.CreateEffectPropertyPanel = function(actionName, effect, effecttree)
 					effect[k] = val
 				end
 			elseif isnumber(v) then
-				local numEntry = panel:TextEntry(k .. ':', '')
+				local numEntry = panel:TextEntry(keyPhrase .. ':', '')
 				numEntry:SetText(tostring(v))
 				numEntry.OnChange = function(self)
 					local val = tonumber(self:GetText()) or 0
@@ -74,14 +81,14 @@ UltiPar.CreateEffectPropertyPanel = function(actionName, effect, effecttree)
 					effect[k] = val
 				end
 			elseif isbool(v) then
-				local checkBox = panel:CheckBox(k .. ':', '')
+				local checkBox = panel:CheckBox(keyPhrase .. ':', '')
 				checkBox:SetChecked(v)
 				checkBox.OnChange = function(self, checked)
 					print(k, checked)
 					effect[k] = checked
 				end
 			elseif isvector(v) or isangle(v) then
-				local vecEntry = panel:TextEntry(k .. ':', '')
+				local vecEntry = panel:TextEntry(keyPhrase .. ':', '')
 				vecEntry:SetText(util.TableToJSON({v}))
 				vecEntry.OnChange = function(self)
 					local val = util.JSONToTable(self:GetText())
@@ -156,7 +163,8 @@ UltiPar.CreateEffectPropertyPanel = function(actionName, effect, effecttree)
 		
 		for _, k in ipairs(keys) do
 			local v = effect[k]
-			panel:Help(k .. '=' .. PropertyViewText(v))
+			local keyPhrase = GetPropertyPhrase(k)
+			panel:Help(keyPhrase .. '=' .. PropertyViewText(v))
 		end
 
 		panel:SetLabel(string.format('%s %s %s', 
