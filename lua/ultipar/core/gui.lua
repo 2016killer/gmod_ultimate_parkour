@@ -34,7 +34,7 @@ local function PropertyViewText(v)
 	elseif isvector(v) or isangle(v) then
 		return string.format('[%s]', v)
 	elseif isfunction(v) then
-		return string.format('%s', 'function')
+		return string.format('%s', v)
 	elseif ismatrix(v) then
 		return string.format('[%s]', v)
 	elseif istable(v) then
