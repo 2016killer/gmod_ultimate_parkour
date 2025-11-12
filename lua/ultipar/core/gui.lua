@@ -64,8 +64,10 @@ UltiPar.TranslateContributor = function(key, prefix)
 	local result = ''
 	local len = #split
 	for i, v in ipairs(split) do
-		if i == len then
+		if i == len and len > 1 then
 			result = result .. v
+		elseif i == len then
+			result = result .. language.GetPhrase(string.format('#%s.%s', prefix, v))
 		else
 			result = result .. language.GetPhrase(string.format('#%s.%s', prefix, v)) .. '-'
 		end
@@ -76,11 +78,41 @@ end
 
 
 UltiPar.CreateEffectPropertyEditor = function(actionName, effect, effecttree)
-	local panel = vgui.Create('DForm')
+	local DScrollPanel = vgui.Create('DScrollPanel')
+	local panel = vgui.Create('DForm', DScrollPanel)
+	panel:Dock(FILL)
 
 	local keys = {}
 	for k, v in pairs(effect) do table.insert(keys, k) end
 	table.sort(keys)
+
+	local saveButton = vgui.Create('DButton')
+	saveButton:SetText('#upgui.save')
+	saveButton.DoClick = function()
+		local effectConfig = LocalPlayer().ultipar_effect_config
+		local customEffects = LocalPlayer().ultipar_effects_custom
+
+		effectConfig[actionName] = 'Custom'
+		customEffects[actionName] = effect
+
+		UltiPar.InitCustomEffect(actionName, effect)
+
+		UltiPar.SaveUserDataToDisk(effectConfig, 'ultipar/effect_config.json')
+		UltiPar.SaveUserDataToDisk(customEffects, 'ultipar/effects_custom.json')
+	
+		UltiPar.SendEffectConfigToServer(effectConfig)
+		UltiPar.SendCustomEffectsToServer(customEffects)
+		// PrintTable(effectConfig)
+	end
+
+	local playButton = panel:Button('#upgui.playeffect')
+	playButton.DoClick = function()
+		UltiPar.EffectTest(LocalPlayer(), actionName, 'Custom')
+		saveButton:DoClick()
+	end
+
+	panel:AddItem(saveButton)
+
 
 	for _, k in ipairs(keys) do
 		local v = effect[k]
@@ -142,45 +174,19 @@ UltiPar.CreateEffectPropertyEditor = function(actionName, effect, effecttree)
 		end
 	end
 
-	local saveButton = vgui.Create('DButton')
-	saveButton:SetText('#upgui.save')
-	saveButton.DoClick = function()
-		local effectConfig = LocalPlayer().ultipar_effect_config
-		local customEffects = LocalPlayer().ultipar_effects_custom
-
-		effectConfig[actionName] = 'Custom'
-		customEffects[actionName] = effect
-
-		UltiPar.InitCustomEffect(actionName, effect)
-
-		UltiPar.SaveUserDataToDisk(effectConfig, 'ultipar/effect_config.json')
-		UltiPar.SaveUserDataToDisk(customEffects, 'ultipar/effects_custom.json')
-	
-		UltiPar.SendEffectConfigToServer(effectConfig)
-		UltiPar.SendCustomEffectsToServer(customEffects)
-		// PrintTable(effectConfig)
-	end
-
-	local playButton = panel:Button('#upgui.playeffect')
-	playButton.DoClick = function()
-		UltiPar.EffectTest(LocalPlayer(), actionName, 'Custom')
-		saveButton:DoClick()
-	end
-
-	panel:AddItem(saveButton)
-
 	panel:SetLabel(string.format('%s %s %s', 
 		language.GetPhrase('#upgui.custom'), 
 		language.GetPhrase('#upgui.property'),
 		language.GetPhrase('#upgui.link') .. ':' .. effect.linkName
 	))
 
-
-	return panel
+	return DScrollPanel
 end
 
 UltiPar.CreateEffectPropertyPreview = function(actionName, effect, effecttree)
-	local panel = vgui.Create('DForm')
+	local DScrollPanel = vgui.Create('DScrollPanel')
+	local panel = vgui.Create('DForm', DScrollPanel)
+	panel:Dock(FILL)
 
 	local keys = {}
 	for k, v in pairs(effect) do table.insert(keys, k) end
@@ -221,8 +227,8 @@ UltiPar.CreateEffectPropertyPreview = function(actionName, effect, effecttree)
 		language.GetPhrase('#upgui.property'),
 		''
 	))
-	
-	return panel
+
+	return DScrollPanel
 end
 
 UltiPar.CreateActionEditor = function(actionName)

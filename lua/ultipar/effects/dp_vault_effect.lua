@@ -69,9 +69,9 @@ local function effectstart_default(self, ply,
             _,
             _,
             _,
+            Type,
             _,
-            _,
-            Type, 
+            _, 
             duration_middle
         )
     -- big shit

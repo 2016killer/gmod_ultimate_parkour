@@ -15,21 +15,22 @@ local convars = {
 	},
 
 	{
-		name = 'dp_hc_blen',
-		default = '0.5',
-		widget = 'NumSlider',
-		min = 0,
-		max = 2,
-		decimals = 2,
-	},
-
-	{
 		name = 'dp_hc_per',
 		default = '0.1',
 		widget = 'NumSlider',
 		min = 0.05,
 		max = 3600,
 		decimals = 2,
+	},
+
+	{
+		name = 'dp_hc_blen',
+		default = '0.5',
+		widget = 'NumSlider',
+		min = 0,
+		max = 2,
+		decimals = 2,
+		help = true
 	},
 
 	{

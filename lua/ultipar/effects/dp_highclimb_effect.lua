@@ -73,7 +73,7 @@ UltiPar.RegisterEffect(
 
 		punch = true,
 		punch_ang_first = Angle(-20, 5, 0),
-		punch_vec_second = Angle(20, 0, 0),
+		punch_ang_second = Angle(20, 0, 0),
 		
 		start_first = effectstart_default_first,
 		start_second = effectstart_default_second,

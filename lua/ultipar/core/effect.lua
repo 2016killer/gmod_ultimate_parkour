@@ -74,7 +74,7 @@ UltiPar.RegisterEffectEasy = function(actionName, effectName, effect)
 	end
 
 	action.Effects[effectName] = table.Merge(table.Copy(default), effect)
-
+	action.Effects[effectName].Name = effectName
 	return action.Effects[effectName]
 end
 

@@ -11,7 +11,7 @@ UltiPar.RegisterEffectEasy(
 )
 
 UltiPar.RegisterEffectEasy(
-    actionName, 
+    'DParkour-Vault', 
     'SP-VManip-白狼', 
     {}
 )
