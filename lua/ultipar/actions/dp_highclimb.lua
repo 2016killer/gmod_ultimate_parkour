@@ -66,9 +66,8 @@ local dp_hc_max = GetConVar('dp_hc_max')
 local actionName = 'DParkour-HighClimb'
 local action, _ = UltiPar.Register(actionName)
 if CLIENT then
-	action.label = '#dp.highclimb'
 	action.icon = 'dparkour/icon.jpg'
-
+	
 	action.CreateOptionMenu = function(panel)
 		UltiPar.CreateConVarMenu(panel, convars)
 	end
@@ -230,9 +229,6 @@ if CLIENT then
 		ply.dp_runtrigger_hc = false
 	end)
 	
-	hook.Add('ShouldDisableLegs', 'dparkour.gmodleg', function()
-		return VMLegs and VMLegs:IsActive()
-	end)
 elseif SERVER then
 	local triggertime = 0
 	local Trigger = UltiPar.Trigger

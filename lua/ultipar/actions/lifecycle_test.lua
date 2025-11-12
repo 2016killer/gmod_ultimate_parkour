@@ -9,11 +9,7 @@ if not GetConVar('developer'):GetBool() then return end
 local actionName = 'LifeCycleTest'
 local action, _ = UltiPar.Register(actionName)
 
-UltiPar.RegisterEffect(
-	actionName, 
-	'default',
-	{label = '#default'}
-)
+UltiPar.RegisterEffect(actionName, 'default')
 
 function action:Check(ply, ...)
 	UltiPar.printdata('Check', ply, ...)

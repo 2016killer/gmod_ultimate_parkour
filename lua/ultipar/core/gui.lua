@@ -24,7 +24,7 @@ local function GetConVarPhrase(name)
 	end
 end
 
-local function PropertyViewText(v)
+UltiPar.EffectValueFormat = function(v)
 	if isstring(v) then
 		return string.format('"%s"', v)
 	elseif isnumber(v) then
@@ -44,136 +44,184 @@ local function PropertyViewText(v)
 	return ''
 end
 
-local function GetPropertyPhrase(key, prefix)
+UltiPar.Translate = function(key, prefix, sep)
 	prefix = prefix or 'upgui'
-	return language.GetPhrase(string.format('#%s.%s', prefix, key)) 
+	
+	local split = string.Split(key, sep or '_')
+	local result = ''
+	local len = #split
+	for i, v in ipairs(split) do
+		result = result .. language.GetPhrase(string.format('#%s.%s', prefix, v)) .. (i == len and '' or '.')
+	end
+
+	return result
+end
+
+UltiPar.TranslateContributor = function(key, prefix)
+	prefix = prefix or 'upgui'
+
+	local split = string.Split(key, '-')
+	local result = ''
+	local len = #split
+	for i, v in ipairs(split) do
+		if i == len then
+			result = result .. v
+		else
+			result = result .. language.GetPhrase(string.format('#%s.%s', prefix, v)) .. '-'
+		end
+	end
+
+	return result
 end
 
 
-UltiPar.CreateEffectPropertyPanel = function(actionName, effect, effecttree)
+UltiPar.CreateEffectPropertyEditor = function(actionName, effect, effecttree)
 	local panel = vgui.Create('DForm')
-	local iscustom = !!effect.linkName
 
 	local keys = {}
 	for k, v in pairs(effect) do table.insert(keys, k) end
 	table.sort(keys)
 
-	if iscustom then
-		for _, k in ipairs(keys) do
-			local v = effect[k]
-			local keyPhrase = GetPropertyPhrase(k)
-			if k == 'label' or k == 'linkName' or k == 'Name' then
-				continue
-			elseif isstring(v) then
-				local textEntry = panel:TextEntry(keyPhrase .. ':', '')
-				textEntry:SetText(v)
-				textEntry.OnChange = function(self)
-					local val = self:GetText()
-					print(k, val)
-					effect[k] = val
-				end
-			elseif isnumber(v) then
-				local numEntry = panel:TextEntry(keyPhrase .. ':', '')
-				numEntry:SetText(tostring(v))
-				numEntry.OnChange = function(self)
-					local val = tonumber(self:GetText()) or 0
-					print(k, val)
-					effect[k] = val
-				end
-			elseif isbool(v) then
-				local checkBox = panel:CheckBox(keyPhrase .. ':', '')
-				checkBox:SetChecked(v)
-				checkBox.OnChange = function(self, checked)
-					print(k, checked)
-					effect[k] = checked
-				end
-			elseif isvector(v) or isangle(v) then
-				local vecEntry = panel:TextEntry(keyPhrase .. ':', '')
-				vecEntry:SetText(util.TableToJSON({v}))
-				vecEntry.OnChange = function(self)
-					local val = util.JSONToTable(self:GetText())
-					if not val or not val[1] or 
-						(not isvector(val[1]) and not isangle(val[1])) then
-						return
-					end
+	for _, k in ipairs(keys) do
+		local v = effect[k]
+		local keyPhrase = UltiPar.Translate(k, effect.prefix)
+		if k == 'linkName' or k == 'Name' then
+			continue
+		elseif isstring(v) and (k == 'VManipAnim' or k == 'VMLegsAnim') then
+			local target = k == 'VManipAnim' and VManip.Anims or VMLegs.Anims
+			local anims = {}
+			for k, _ in pairs(target) do table.insert(anims, k) end
+			table.sort(anims)
 
-					val = val[1]
-					print(k, val)
-					effect[k] = val
+			local animComboBox = panel:ComboBox(keyPhrase .. ':', '')
+			animComboBox.OnSelect = function(self, _, anim)
+				print(k, anim)
+				effect[k] = anim
+			end
+
+			for _, anim in ipairs(anims) do
+				animComboBox:AddChoice(anim, nil, anim == v)
+			end
+		elseif isstring(v) then
+			local textEntry = panel:TextEntry(keyPhrase .. ':', '')
+			textEntry:SetText(v)
+			textEntry.OnChange = function(self)
+				local val = self:GetText()
+				print(k, val)
+				effect[k] = val
+			end
+		elseif isnumber(v) then
+			local numEntry = panel:TextEntry(keyPhrase .. ':', '')
+			numEntry:SetText(tostring(v))
+			numEntry.OnChange = function(self)
+				local val = tonumber(self:GetText()) or 0
+				print(k, val)
+				effect[k] = val
+			end
+		elseif isbool(v) then
+			local checkBox = panel:CheckBox(keyPhrase .. ':', '')
+			checkBox:SetChecked(v)
+			checkBox.OnChange = function(self, checked)
+				print(k, checked)
+				effect[k] = checked
+			end
+		elseif isvector(v) or isangle(v) then
+			local vecEntry = panel:TextEntry(keyPhrase .. ':', '')
+			vecEntry:SetText(util.TableToJSON({v}))
+			vecEntry.OnChange = function(self)
+				local val = util.JSONToTable(self:GetText())
+				if not val or not val[1] or 
+					(not isvector(val[1]) and not isangle(val[1])) then
+					return
 				end
+
+				val = val[1]
+				print(k, val)
+				effect[k] = val
 			end
 		end
-
-		local saveButton = vgui.Create('DButton')
-		saveButton:SetText('#ultipar.save')
-		saveButton.DoClick = function()
-			local effectConfig = LocalPlayer().ultipar_effect_config
-			local customEffects = LocalPlayer().ultipar_effects_custom
-
-			effectConfig[actionName] = 'Custom'
-			customEffects[actionName] = effect
-	
-			UltiPar.InitCustomEffect(actionName, effect)
-	
-			UltiPar.SaveUserDataToDisk(effectConfig, 'ultipar/effect_config.json')
-			UltiPar.SaveUserDataToDisk(customEffects, 'ultipar/effects_custom.json')
-		
-			UltiPar.SendEffectConfigToServer(effectConfig)
-			UltiPar.SendCustomEffectsToServer(customEffects)
-			// PrintTable(effectConfig)
-		end
-
-		local playButton = panel:Button('#ultipar.playeffect')
-		playButton.DoClick = function()
-			UltiPar.EffectTest(LocalPlayer(), actionName, 'Custom')
-			saveButton:DoClick()
-		end
-
-		panel:AddItem(saveButton)
-
-		panel:SetLabel(string.format('%s %s %s', 
-			language.GetPhrase('#ultipar.custom'), 
-			language.GetPhrase('#ultipar.property'),
-			language.GetPhrase('#ultipar.link') .. ':' .. effect.linkName
-		))
-	else
-		local customButton = panel:Button('#ultipar.custom')
-		customButton:SetText('#ultipar.custom')
-		customButton:SetIcon('icon64/tool.png')
-
-		customButton.DoClick = function()
-			local effectConfig = LocalPlayer().ultipar_effect_config
-			local customEffects = LocalPlayer().ultipar_effects_custom
-			local custom = UltiPar.CreateCustomEffect(actionName, effect.Name)
-
-			effectConfig[actionName] = 'Custom'
-			customEffects[actionName] = custom
-	
-			UltiPar.InitCustomEffect(actionName, custom)
-		
-			UltiPar.SaveUserDataToDisk(effectConfig, 'ultipar/effect_config.json')
-			UltiPar.SaveUserDataToDisk(customEffects, 'ultipar/effects_custom.json')
-
-			UltiPar.SendEffectConfigToServer(effectConfig)
-			UltiPar.SendCustomEffectsToServer(customEffects)
-			// PrintTable(effectConfig)
-			effecttree.Effects['Custom'] = custom
-			effecttree:RefreshNode()
-		end
-		
-		for _, k in ipairs(keys) do
-			local v = effect[k]
-			local keyPhrase = GetPropertyPhrase(k)
-			panel:Help(keyPhrase .. '=' .. PropertyViewText(v))
-		end
-
-		panel:SetLabel(string.format('%s %s %s', 
-			effect.Name, 
-			language.GetPhrase('#ultipar.property'),
-			''
-		))
 	end
 
+	local saveButton = vgui.Create('DButton')
+	saveButton:SetText('#upgui.save')
+	saveButton.DoClick = function()
+		local effectConfig = LocalPlayer().ultipar_effect_config
+		local customEffects = LocalPlayer().ultipar_effects_custom
+
+		effectConfig[actionName] = 'Custom'
+		customEffects[actionName] = effect
+
+		UltiPar.InitCustomEffect(actionName, effect)
+
+		UltiPar.SaveUserDataToDisk(effectConfig, 'ultipar/effect_config.json')
+		UltiPar.SaveUserDataToDisk(customEffects, 'ultipar/effects_custom.json')
+	
+		UltiPar.SendEffectConfigToServer(effectConfig)
+		UltiPar.SendCustomEffectsToServer(customEffects)
+		// PrintTable(effectConfig)
+	end
+
+	local playButton = panel:Button('#upgui.playeffect')
+	playButton.DoClick = function()
+		UltiPar.EffectTest(LocalPlayer(), actionName, 'Custom')
+		saveButton:DoClick()
+	end
+
+	panel:AddItem(saveButton)
+
+	panel:SetLabel(string.format('%s %s %s', 
+		language.GetPhrase('#upgui.custom'), 
+		language.GetPhrase('#upgui.property'),
+		language.GetPhrase('#upgui.link') .. ':' .. effect.linkName
+	))
+
+
+	return panel
+end
+
+UltiPar.CreateEffectPropertyPreview = function(actionName, effect, effecttree)
+	local panel = vgui.Create('DForm')
+
+	local keys = {}
+	for k, v in pairs(effect) do table.insert(keys, k) end
+	table.sort(keys)
+
+	local customButton = panel:Button('#upgui.custom')
+	customButton:SetText('#upgui.custom')
+	customButton:SetIcon('icon64/tool.png')
+
+	customButton.DoClick = function()
+		local effectConfig = LocalPlayer().ultipar_effect_config
+		local customEffects = LocalPlayer().ultipar_effects_custom
+		local custom = UltiPar.CreateCustomEffect(actionName, effect.Name)
+
+		effectConfig[actionName] = 'Custom'
+		customEffects[actionName] = custom
+
+		UltiPar.InitCustomEffect(actionName, custom)
+	
+		UltiPar.SaveUserDataToDisk(effectConfig, 'ultipar/effect_config.json')
+		UltiPar.SaveUserDataToDisk(customEffects, 'ultipar/effects_custom.json')
+
+		UltiPar.SendEffectConfigToServer(effectConfig)
+		UltiPar.SendCustomEffectsToServer(customEffects)
+		// PrintTable(effectConfig)
+		effecttree.Effects['Custom'] = custom
+		effecttree:RefreshNode()
+	end
+	
+	for _, k in ipairs(keys) do
+		local v = effect[k]
+		local keyPhrase = UltiPar.Translate(k, effect.prefix)
+		panel:Help(keyPhrase .. '=' .. UltiPar.EffectValueFormat(v))
+	end
+
+	panel:SetLabel(string.format('%s %s %s', 
+		effect.Name, 
+		language.GetPhrase('#upgui.property'),
+		''
+	))
+	
 	return panel
 end
 
@@ -182,7 +230,7 @@ UltiPar.CreateActionEditor = function(actionName)
 
 	local width, height = 600, 400
 	local Window = vgui.Create('DFrame')
-	Window:SetTitle(language.GetPhrase('ultipar.actionmanager') .. '  ' .. actionName)
+	Window:SetTitle(language.GetPhrase('#upgui.actionmanager') .. '  ' .. actionName)
 	Window:MakePopup()
 	Window:SetSizable(true)
 	Window:SetSize(width, height)
@@ -224,7 +272,7 @@ UltiPar.CreateActionEditor = function(actionName)
 				else
 					icon = isstring(v.icon) and v.icon or 'icon16/attach.png'
 				end
-				local label = isstring(v.label) and v.label or k
+				local label = UltiPar.TranslateContributor(k, v.prefix)
 
 				local node = self:AddNode(label, icon)
 				node.effect = k
@@ -234,7 +282,7 @@ UltiPar.CreateActionEditor = function(actionName)
 				// playButton:SetPos(170, 0)
 				playButton:Dock(RIGHT)
 				
-				playButton:SetText('#ultipar.playeffect')
+				playButton:SetText('#upgui.playeffect')
 				playButton:SetIcon('icon16/cd_go.png')
 				
 				playButton.DoClick = function()
@@ -271,8 +319,18 @@ UltiPar.CreateActionEditor = function(actionName)
 				end
 
 				local effect = Effects[selNode.effect]
-		
-				local propPanel = UltiPar.CreateEffectPropertyPanel(actionName, effect, effecttree)
+				local iscustom = !!effect.linkName
+				
+				local propPanel = nil
+				if iscustom and effect.CreateEffectPropertyEditor then
+					propPanel = effect.CreateEffectPropertyEditor(actionName, effect, effecttree)
+				elseif iscustom and not effect.CreateEffectPropertyEditor then
+					propPanel = UltiPar.CreateEffectPropertyEditor(actionName, effect, effecttree)
+				elseif not iscustom and effect.CreateEffectPropertyPreview then
+					propPanel = effect.CreateEffectPropertyPreview(actionName, effect, effecttree)
+				elseif not iscustom and not effect.CreateEffectPropertyPreview then
+					propPanel = UltiPar.CreateEffectPropertyPreview(actionName, effect, effecttree)
+				end
 				propPanel:SetParent(UserPanel)
 				
 				local rightwidth = width - div:GetLeftWidth()
@@ -288,7 +346,7 @@ UltiPar.CreateActionEditor = function(actionName)
 
 		effecttree:RefreshNode()
 
-		Tabs:AddSheet('#ultipar.effect', UserPanel, 'icon16/user.png', false, false, '')
+		Tabs:AddSheet('#upgui.effect', UserPanel, 'icon16/user.png', false, false, '')
 	end
 
 	if isfunction(action.CreateOptionMenu) then
@@ -302,7 +360,7 @@ UltiPar.CreateActionEditor = function(actionName)
 
 		action.CreateOptionMenu(OptionPanel)
 
-		Tabs:AddSheet('#ultipar.options', DScrollPanel, 'icon16/wrench.png', false, false, '')
+		Tabs:AddSheet('#upgui.options', DScrollPanel, 'icon16/wrench.png', false, false, '')
 	end
 end
 
@@ -376,7 +434,7 @@ UltiPar.CreateGlobalMenu = function(panel)
 		for i, k in ipairs(keys) do
 			local v = UltiPar.ActionSet[k]
 			if v.Invisible then continue end
-			local label = isstring(v.label) and v.label or k
+			local label = UltiPar.Translate(k, v.prefix, '-')
 			local icon = isstring(v.icon) and v.icon or 'icon32/tool.png'
 
 			local node = self:AddNode(label, icon)
@@ -411,12 +469,12 @@ UltiPar.CreateGlobalMenu = function(panel)
 
 	panel:AddItem(tree)
 
-	local LoadButton = panel:Button('#ultipar.load')
+	local LoadButton = panel:Button('#upgui.load')
 	LoadButton.DoClick = function()
 		UltiPar.ReadActionDisable()
 	end
 
-	local SaveButton = panel:Button('#ultipar.save')
+	local SaveButton = panel:Button('#upgui.save')
 	SaveButton.DoClick = function()
 		UltiPar.WriteActionDisable(UltiPar.DisabledSet)
 	end
@@ -429,9 +487,9 @@ end
 
 hook.Add('PopulateToolMenu', 'ultipar.menu', function()
 	spawnmenu.AddToolMenuOption('Options', 
-		language.GetPhrase('ultipar.category'), 
-		'ultipar.menu', 
-		language.GetPhrase('ultipar.actionmanager'), '', '', 
+		language.GetPhrase('#upgui.category'), 
+		'#upgui.menu', 
+		language.GetPhrase('#upgui.actionmanager'), '', '', 
 		UltiPar.CreateGlobalMenu
 	)
 end)

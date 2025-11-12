@@ -6,6 +6,17 @@
 UltiPar = UltiPar or {}
 local UltiPar = UltiPar
 
+UltiPar.GeneralEffectClear = function(self, ply)
+	if SERVER then
+		ply:SetNWString('UP_WOS', '')
+	elseif CLIENT then
+		local currentAnim = VManip:GetCurrentAnim()
+		if currentAnim and currentAnim == self.VManipAnim then
+			VManip:QuitHolding(currentAnim)
+		end
+	end
+end
+
 UltiPar.RegisterEffect = function(actionName, effectName, effect)
 	-- 注册动作特效, 返回特效和是否已存在
 	-- 不支持覆盖
@@ -49,7 +60,7 @@ end
 
 UltiPar.RegisterEffectEasy = function(actionName, effectName, effect)
 	-- 注册动作特效, 返回特效和是否已存在
-
+	-- 支持覆盖
 	local action = UltiPar.GetAction(actionName)
 	if not action then
 		ErrorNoHalt(string.format('Action "%s" not found', actionName))
@@ -58,15 +69,13 @@ UltiPar.RegisterEffectEasy = function(actionName, effectName, effect)
 
 	local default = UltiPar.GetEffect(action, 'default')
 	if not default then
-		print(string.format('Action "%s" has no default effect', actionName))
-		default = {}
+		ErrorNoHalt(string.format('Action "%s" has no default effect', actionName))
+		return
 	end
 
-	return UltiPar.RegisterEffect(
-		actionName, 
-		effectName, 
-		table.Merge(table.Copy(default), effect)
-	)
+	action.Effects[effectName] = table.Merge(table.Copy(default), effect)
+
+	return action.Effects[effectName]
 end
 
 
@@ -156,7 +165,6 @@ UltiPar.CreateCustomEffect = function(actionName, linkName)
 
 	local custom = {
 		Name = 'Custom',
-		label = '#ultipar.custom',
 		linkName = linkName
 	}
 
@@ -333,3 +341,17 @@ elseif CLIENT then
 	UltiPar.GetVecPunchVel = function() return vecpunch_vel end
 	UltiPar.GetAngPunchVel = function() return angpunch_vel end
 end
+
+
+hook.Add('ShouldDisableLegs', 'ultipar.gmodleg', function()
+	return VMLegs and VMLegs:IsActive()
+end)
+
+hook.Add('CalcMainActivity', 'ultipar.effect.WOS', function(ply, velocity)
+	local anim = ply:GetNWString('UP_WOS')
+	if anim == '' then
+		return
+	end
+
+	return -1, ply:LookupSequence(anim)
+end)

@@ -71,7 +71,6 @@ local dp_vault_double = GetConVar('dp_vault_double')
 local actionName = 'DParkour-Vault'
 local action, _ = UltiPar.Register(actionName)
 if CLIENT then
-	action.label = '#dp.vault'
 	action.icon = 'dparkour/icon.jpg'
 
 	action.CreateOptionMenu = function(panel)

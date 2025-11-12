@@ -7,7 +7,6 @@
 		Effects = {
 			default = {
 				name = 'default',
-				label = '#default',
 				start = function(self, ply, ...(checkResult))
 					-- 特效
 				end
@@ -251,7 +250,7 @@ UltiPar.LoadLuaFiles('core')
 UltiPar.LoadLuaFiles('actions')
 UltiPar.LoadLuaFiles('effects')
 UltiPar.LoadLuaFiles('effectseasy')
-UltiPar.Version = '2.0.0'
+UltiPar.Version = '2.1.0'
 
 file.CreateDir('ultipar')
 
