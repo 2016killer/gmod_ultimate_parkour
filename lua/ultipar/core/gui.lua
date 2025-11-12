@@ -116,6 +116,7 @@ UltiPar.CreateEffectPropertyEditor = function(actionName, effect, effecttree)
 	end
 
 	local playButton = panel:Button('#upgui.playeffect')
+	playButton:SetIcon('icon16/cd_go.png')
 	playButton.DoClick = function()
 		UltiPar.EffectTest(LocalPlayer(), actionName, 'Custom')
 		saveButton:DoClick()
