@@ -75,7 +75,7 @@ local function effectstart_default(self, ply,
             duration_middle
         )
     -- big shit
-    print(Type, duration_middle)
+    // print(Type, duration_middle)
 
     local ishigh = Type == 1
     local isdouble = !!duration_middle

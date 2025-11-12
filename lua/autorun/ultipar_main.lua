@@ -184,6 +184,63 @@ UltiPar.EnableInterrupt = function(actionName1, actionName2)
 	action1.Interrupts[actionName2] = true
 end
 
+UltiPar.SetInterruptsFunc = function(actionName1, actionName2, func)
+	local action1 = UltiPar.Register(actionName1)
+
+	if not isfunction(func) then
+		ErrorNoHalt(
+			string.format(
+				'[UltiPar]: SetInterruptsFunc() - Error: func "%s" is not a function, action1 "%s" action2 "%s"\n', 
+				func, actionName1, actionName2
+			)
+		)
+		return
+	end
+
+	local InterruptsFunc = action1.InterruptsFunc[actionName2]
+	if istable(InterruptsFunc) then
+		print(
+			string.format(
+				'[UltiPar]: SetInterruptsFunc() - Warning: origin InterruptsFunc is a table, will override, action1 "%s" action2 "%s"\n', 
+				actionName1, actionName2
+			)
+		)
+		action1.InterruptsFunc[actionName2] = func
+	else
+		action1.InterruptsFunc[actionName2] = func
+	end
+end
+
+UltiPar.AddInterruptsFunc = function(actionName1, actionName2, func)
+	local action1 = UltiPar.Register(actionName1)
+
+	if not isfunction(func) then
+		ErrorNoHalt(
+			string.format(
+				'[UltiPar]: SetInterruptsFunc() - Error: func "%s" is not a function, action1 "%s" action2 "%s"\n', 
+				func, actionName1, actionName2
+			)
+		)
+		return
+	end
+
+	local InterruptsFunc = action1.InterruptsFunc[actionName2]
+	if isfunction(InterruptsFunc) then
+		print(
+			string.format(
+				'[UltiPar]: SetInterruptsFunc() - Warning: origin InterruptsFunc is a function, will convert to table, action1 "%s" action2 "%s"\n', 
+				actionName1, actionName2
+			)
+		)
+		action1.InterruptsFunc[actionName2] = {InterruptsFunc}
+		table.insert(action1.InterruptsFunc[actionName2], func)
+	elseif istable(InterruptsFunc) then
+		table.insert(InterruptsFunc, func)
+	else
+		action1.InterruptsFunc[actionName2] = {func}
+	end
+end
+
 UltiPar.LoadLuaFiles = function(path)
 	local dir = string.format('ultipar/%s/', path)
 	local filelist = file.Find(dir .. '*.lua', 'LUA')

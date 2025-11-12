@@ -110,11 +110,14 @@ UltiPar.Trigger = function(ply, action, checkResult, ...)
 				return
 			end
 		elseif istable(interruptFunc) then
-			local flag = nil
+			local flag = true
 			for i, func in ipairs(interruptFunc) do
-				flag = func(ply, playing, unpack(playingData)) or flag
+				flag = flag and func(ply, playing, unpack(playingData))
 			end
-			if flag then return end
+
+			if not flag then 
+				return 
+			end
 		end
 
 		ply.ultipar_playing = nil
@@ -350,4 +353,11 @@ end
 
 UltiPar.SetPlayingData = function(ply, data)
 	ply.ultipar_playing_data = data
+end
+
+UltiPar.GeneralInterruptFunc = function(ply, action, ...)
+	local effect = GetPlayerCurrentEffect(ply, action)
+	if effect then effect:clear(ply, ...) end
+	// UltiPar.printdata('-----fuck you Interrupt-----', ply, ...)
+	return true
 end

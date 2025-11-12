@@ -11,13 +11,13 @@ if not GetConVar('developer'):GetBool() then return end
 local actionName = 'InterruptTest'
 local action, _ = UltiPar.Register(actionName)
 
-local function InterruptFunc(ply, ...)
+local function InterruptFunc(ply, action, ...)
 	UltiPar.printdata('InterruptFunc', ply, ...)
 	return true
 end
 
-local lifecycleTestAction, _ = UltiPar.Register('LifeCycleTest')
-lifecycleTestAction.Interrupts[actionName] = InterruptFunc
+UltiPar.EnableInterrupt('LifeCycleTest', actionName)
+UltiPar.SetInterruptsFunc('LifeCycleTest', actionName, InterruptFunc)
 
 
 action.Check = function() print('Check ' .. actionName); return true end

@@ -262,6 +262,10 @@ end
 
 UltiPar.EnableInterrupt('DParkour-LowClimb', actionName)
 UltiPar.EnableInterrupt('DParkour-HighClimb', actionName)
+
+UltiPar.SetInterruptsFunc('DParkour-LowClimb', actionName, UltiPar.GeneralInterruptFunc)
+UltiPar.SetInterruptsFunc('DParkour-HighClimb', actionName, UltiPar.GeneralInterruptFunc)
+
 if SERVER then
 	hook.Add('UltiParStart', 'dparkour.vault.trigger', function(ply, playing, checkResult)
         if playing.Name == 'DParkour-LowClimb' and dp_lc_vault:GetBool() then
