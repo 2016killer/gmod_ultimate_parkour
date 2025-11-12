@@ -13,6 +13,7 @@ end
 if SERVER then return end
 
 local white = Color(255, 255, 255)
+local black = Color(0, 0, 0)
 local function GetConVarPhrase(name)
 	-- 替换第一个下划线为点号
 	local start, ending, phrase = string.find(name, "_", 1)
@@ -44,9 +45,14 @@ UltiPar.EffectValueFormat = function(v)
 	return ''
 end
 
+local developer = GetConVar('developer')
 UltiPar.Translate = function(key, prefix, sep)
+	if developer:GetBool() then
+		return key
+	end
+
 	prefix = prefix or 'upgui'
-	
+
 	local split = string.Split(key, sep or '_')
 	local result = ''
 	local len = #split
@@ -58,6 +64,10 @@ UltiPar.Translate = function(key, prefix, sep)
 end
 
 UltiPar.TranslateContributor = function(key, prefix)
+	if developer:GetBool() then
+		return key
+	end
+
 	prefix = prefix or 'upgui'
 
 	local split = string.Split(key, '-')
@@ -236,12 +246,18 @@ UltiPar.CreateActionEditor = function(actionName)
 
 	local width, height = 600, 400
 	local Window = vgui.Create('DFrame')
-	Window:SetTitle(language.GetPhrase('#upgui.actionmanager') .. '  ' .. actionName)
+	Window:SetTitle(language.GetPhrase('#upgui.actionmanager') .. '  ' .. actionName .. (developer:GetBool() and ' (Developer Mode)' or ''))
 	Window:MakePopup()
 	Window:SetSizable(true)
 	Window:SetSize(width, height)
 	Window:Center()
 	Window:SetDeleteOnClose(true)
+	if developer:GetBool() then
+		Window.Paint = function(self, w, h)
+			draw.RoundedBox(0, 0, 0, w, h, black)
+		end
+	end
+
 
 	local Tabs = vgui.Create('DPropertySheet', Window)
 	Tabs:Dock(FILL)
