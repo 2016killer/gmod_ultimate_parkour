@@ -194,7 +194,7 @@ function action:Clear(ply, mv, cmd, landpos)
     ply:SetMoveType(MOVETYPE_WALK)
 	if SERVER then
 		-- 开环控制必须加这个
-	    if UltiPar.GeneralLandSpaceCheck(ply, ply:GetPos()) then
+	    if mv and UltiPar.GeneralLandSpaceCheck(ply, ply:GetPos()) then
 			mv:SetOrigin(landpos)
 		end
     end

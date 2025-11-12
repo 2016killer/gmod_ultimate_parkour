@@ -250,7 +250,7 @@ end
 
 function action:Clear(ply, mv, cmd, vaultpos, endvel)
     ply:SetMoveType(MOVETYPE_WALK)
-    if SERVER then
+    if SERVER and mv then
         -- 开环控制必须加这个
         if UltiPar.GeneralLandSpaceCheck(ply, ply:GetPos()) then
             mv:SetOrigin(vaultpos)
