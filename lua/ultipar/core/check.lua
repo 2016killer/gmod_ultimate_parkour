@@ -188,7 +188,7 @@ UltiPar.GetFallDamageInfo = function(ply, fallspeed, ref)
 	fallspeed = fallspeed or ply:GetVelocity()[3]
 	if fallspeed < ref then
 		local damage = hook.Run('GetFallDamage', ply, fallspeed) or 0
-		if damage > 0 then
+		if isnumber(damage) and damage > 0 then
 			local d = DamageInfo()
 			d:SetDamage(damage)
 			d:SetAttacker(Entity(0))
