@@ -110,7 +110,7 @@ function action:IsDoubleVault(ply, vaultheight)
 end
 
 function action:Check(ply, startpos, landpos, blockheight, plyvel, startspeed, type_)
-	if not ply:KeyDown(IN_FORWARD) or ply:KeyDown(IN_DUCK) then 
+	if ply:KeyDown(IN_BACK) or not ply:KeyDown(IN_FORWARD) or ply:KeyDown(IN_DUCK) then 
 		return
 	end
   

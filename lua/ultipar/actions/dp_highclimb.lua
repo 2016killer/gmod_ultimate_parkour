@@ -88,7 +88,7 @@ function action:GetSpeed(ply, ref)
 end
 
 function action:Check(ply)
-	if ply:GetMoveType() == MOVETYPE_NOCLIP or ply:InVehicle() or !ply:Alive() then 
+	if ply:KeyDown(IN_BACK) or ply:GetMoveType() == MOVETYPE_NOCLIP or ply:InVehicle() or !ply:Alive() then 
 		return
 	end
 
